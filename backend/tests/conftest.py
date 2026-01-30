@@ -4,6 +4,7 @@ Pytest configuration and fixtures.
 import pytest
 from fastapi.testclient import TestClient
 from mongomock_motor import AsyncMongoMockClient
+from unittest.mock import AsyncMock, patch, MagicMock
 import io
 
 from app.main import app
@@ -21,10 +22,16 @@ def mock_db():
 @pytest.fixture
 def test_client(mock_db):
     """FastAPI test client with mocked database."""
-    app.dependency_overrides[get_database] = lambda: mock_db
-    with TestClient(app) as client:
-        yield client
-    app.dependency_overrides.clear()
+    # Mock the database connection functions where they're imported in main.py
+    with patch('app.main.connect_to_mongo', new_callable=AsyncMock) as mock_connect, \
+         patch('app.main.close_mongo_connection', new_callable=AsyncMock) as mock_close:
+
+        app.dependency_overrides[get_database] = lambda: mock_db
+
+        with TestClient(app) as client:
+            yield client
+
+        app.dependency_overrides.clear()
 
 
 @pytest.fixture
@@ -42,30 +49,57 @@ def sample_text():
 
 
 @pytest.fixture
-def mock_openai_response(monkeypatch):
-    """Mock OpenAI API responses."""
+def mock_groq_response(monkeypatch):
+    """Mock Groq API responses."""
+    class MockChoice:
+        def __init__(self, text="Mocked response"):
+            self.message = MagicMock()
+            self.message.content = text
+
     class MockResponse:
-        def __init__(self, text="Mocked response", usage=None):
-            self.text = text
-            self.content = text
-            self.choices = [type('obj', (object,), {
-                'message': type('obj', (object,), {'content': text})()
-            })()]
-            self.usage = usage or type('obj', (object,), {
-                'prompt_tokens': 100,
-                'completion_tokens': 50,
-                'total_tokens': 150
-            })()
+        def __init__(self, text="Mocked response"):
+            self.choices = [MockChoice(text)]
+            self.usage = MagicMock()
+            self.usage.prompt_tokens = 100
+            self.usage.completion_tokens = 50
+            self.usage.total_tokens = 150
 
-    async def mock_create(*args, **kwargs):
-        return MockResponse()
+    class MockCompletions:
+        async def create(self, *args, **kwargs):
+            return MockResponse()
 
-    async def mock_atranscribe(*args, **kwargs):
-        return {
-            "text": "Sample transcription",
-            "duration": 120,
-            "language": "en"
-        }
+    class MockChat:
+        def __init__(self):
+            self.completions = MockCompletions()
 
-    monkeypatch.setattr("openai.ChatCompletion.acreate", mock_create)
-    monkeypatch.setattr("openai.Audio.atranscribe", mock_atranscribe)
+    class MockGroqClient:
+        def __init__(self, *args, **kwargs):
+            self.chat = MockChat()
+
+    monkeypatch.setattr("groq.AsyncGroq", MockGroqClient)
+
+
+@pytest.fixture
+def mock_whisper(monkeypatch):
+    """Mock Whisper transcription."""
+    class MockSegment:
+        def __init__(self):
+            self.start = 0.0
+            self.end = 10.0
+            self.text = "Sample transcription text"
+
+    class MockTranscriptionInfo:
+        def __init__(self):
+            self.language = "en"
+            self.duration = 120.0
+
+    class MockWhisperModel:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def transcribe(self, *args, **kwargs):
+            segments = [MockSegment()]
+            info = MockTranscriptionInfo()
+            return segments, info
+
+    monkeypatch.setattr("faster_whisper.WhisperModel", MockWhisperModel)
