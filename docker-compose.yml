@@ -1,21 +1,4 @@
 services:
-  mongodb:
-    image: mongo:7.0
-    container_name: documind-mongodb
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongodb_data:/data/db
-    environment:
-      MONGO_INITDB_DATABASE: documind
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - documind-network
-
   backend:
     build:
       context: ./backend
@@ -29,11 +12,8 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      - MONGODB_URL=mongodb://mongodb:27017/documind
       - ENVIRONMENT=development
-    depends_on:
-      mongodb:
-        condition: service_healthy
+      # MONGODB_URL is loaded from .env file (MongoDB Atlas only)
     networks:
       - documind-network
     restart: unless-stopped
@@ -52,9 +32,6 @@ services:
     networks:
       - documind-network
     restart: unless-stopped
-
-volumes:
-  mongodb_data:
 
 networks:
   documind-network:
