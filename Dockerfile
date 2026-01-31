@@ -50,8 +50,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy backend application
 COPY backend/app ./app
 
-# Create storage directories
-RUN mkdir -p storage/pdfs storage/audio storage/videos storage/extracted
+# Create storage directories and supervisor log directory
+RUN mkdir -p storage/pdfs storage/audio storage/videos storage/extracted /var/log/supervisor
 
 # Copy frontend build from builder stage
 COPY --from=frontend-builder /frontend/dist /usr/share/nginx/html
