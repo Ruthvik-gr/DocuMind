@@ -91,6 +91,7 @@ class TestSummaryServiceAPI:
 
             result = await summary_service.generate_summary(
                 file_id="test-ai-file",
+                user_id="test-user-id",
                 text=sample_text,
                 summary_type=SummaryType.BRIEF
             )
@@ -127,6 +128,7 @@ class TestSummaryServiceAPI:
 
             result = await summary_service.generate_summary(
                 file_id="test-ml-file",
+                user_id="test-user-id",
                 text=sample_text,
                 summary_type=SummaryType.DETAILED
             )
@@ -164,6 +166,7 @@ class TestTimestampServiceAPI:
 
             result = await timestamp_service.extract_timestamps(
                 file_id="test-tutorial-file",
+                user_id="test-user-id",
                 transcription=sample_transcription,
                 duration=540  # 9 minutes
             )
@@ -210,7 +213,7 @@ class TestTranscriptionServiceAPI:
             extracted_content, metadata = await transcription_service.transcribe_file(audio_path)
 
             assert extracted_content is not None
-            assert extracted_content.extraction_method == "faster-whisper"
+            assert "faster-whisper" in extracted_content.extraction_method
             assert metadata is not None
             assert metadata.duration >= 0
             # Silence might transcribe as empty or with minimal text
@@ -287,14 +290,14 @@ class TestFileServiceAPI:
 
         try:
             # Upload the file
-            file_model = await file_service.upload_file(file)
+            file_model = await file_service.upload_file(file, user_id="test-user-id")
 
             assert file_model is not None
             assert file_model.file_id is not None
             assert file_model.filename == "integration_test.pdf"
 
             # Retrieve the file
-            retrieved = await file_service.get_file(file_model.file_id)
+            retrieved = await file_service.get_file(file_model.file_id, user_id="test-user-id")
 
             assert retrieved is not None
             assert retrieved.file_id == file_model.file_id

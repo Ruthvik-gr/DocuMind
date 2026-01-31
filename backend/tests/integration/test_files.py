@@ -187,7 +187,8 @@ class TestFileEndpoints:
         """Test listing user's files."""
         from datetime import datetime
 
-        with patch('app.api.v1.endpoints.files.file_service.list_files', new_callable=AsyncMock) as mock_list:
+        with patch('app.api.v1.endpoints.files.file_service.list_files', new_callable=AsyncMock) as mock_list, \
+             patch('app.api.v1.endpoints.files.get_database') as mock_get_db:
             mock_file1 = MagicMock()
             mock_file1.file_id = "file-1"
             mock_file1.filename = "test1.pdf"
@@ -205,6 +206,11 @@ class TestFileEndpoints:
             mock_file2.created_at = datetime.utcnow()
 
             mock_list.return_value = [mock_file1, mock_file2]
+
+            # Mock database for chat history check
+            mock_collection = MagicMock()
+            mock_collection.find_one = AsyncMock(return_value=None)
+            mock_get_db.return_value = {"chat_history": mock_collection}
 
             response = test_client.get("/api/v1/files/")
 

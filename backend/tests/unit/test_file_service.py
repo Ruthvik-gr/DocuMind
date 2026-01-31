@@ -41,7 +41,7 @@ class TestFileService:
             mock_collection.insert_one = AsyncMock()
             mock_get_db.return_value = {"files": mock_collection}
 
-            result = await file_service.upload_file(mock_file)
+            result = await file_service.upload_file(mock_file, user_id="test-user-id")
 
             assert result.file_id == "test-id"
             assert result.filename == "test.pdf"
@@ -69,7 +69,7 @@ class TestFileService:
             mock_get_db.return_value = {"files": mock_collection}
 
             with pytest.raises(DatabaseError):
-                await file_service.upload_file(mock_file)
+                await file_service.upload_file(mock_file, user_id="test-user-id")
 
             mock_storage.delete_file.assert_called_once()
 
@@ -79,6 +79,7 @@ class TestFileService:
         with patch('app.services.file_service.get_database') as mock_get_db:
             file_data = {
                 "file_id": "test-id",
+                "user_id": "test-user-id",
                 "filename": "test.pdf",
                 "file_type": "pdf",
                 "file_path": "/path/to/file",

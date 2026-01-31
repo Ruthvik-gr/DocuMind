@@ -66,7 +66,7 @@ class TestChatEndpoints:
 
     def test_ask_question_success(self, test_client, mock_db):
         """Test successful question answering."""
-        from app.core.constants import ProcessingStatus
+        from app.core.constants import ProcessingStatus, FileType
 
         async def mock_stream(*args, **kwargs):
             yield {"type": "content", "data": "This is "}
@@ -74,14 +74,18 @@ class TestChatEndpoints:
             yield {"type": "sources", "data": ["chunk1", "chunk2"]}
 
         with patch('app.api.v1.endpoints.chat.file_service.get_file', new_callable=AsyncMock) as mock_file_get, \
+             patch('app.api.v1.endpoints.chat.langchain_service.get_or_load_vector_store', new_callable=AsyncMock) as mock_vector_store, \
              patch('app.api.v1.endpoints.chat.langchain_service.ask_question_stream') as mock_ask, \
              patch('app.api.v1.endpoints.chat.get_database') as mock_get_db:
 
             # Setup mock file
             mock_file = MagicMock()
             mock_file.processing_status = ProcessingStatus.COMPLETED
-            mock_file.file_type = "pdf"
+            mock_file.file_type = FileType.PDF
             mock_file_get.return_value = mock_file
+
+            # Setup mock vector store
+            mock_vector_store.return_value = MagicMock()
 
             # Setup mock langchain streaming
             mock_ask.return_value = mock_stream()
@@ -115,21 +119,23 @@ class TestChatEndpoints:
 
     def test_ask_question_with_existing_history(self, test_client, mock_db):
         """Test question with existing chat history."""
-        from app.core.constants import ProcessingStatus, MessageRole
+        from app.core.constants import ProcessingStatus, MessageRole, FileType
 
         async def mock_stream(*args, **kwargs):
             yield {"type": "content", "data": "Follow up answer"}
             yield {"type": "sources", "data": ["chunk1"]}
 
         with patch('app.api.v1.endpoints.chat.file_service.get_file', new_callable=AsyncMock) as mock_file_get, \
+             patch('app.api.v1.endpoints.chat.langchain_service.get_or_load_vector_store', new_callable=AsyncMock) as mock_vector_store, \
              patch('app.api.v1.endpoints.chat.langchain_service.ask_question_stream') as mock_ask, \
              patch('app.api.v1.endpoints.chat.get_database') as mock_get_db:
 
             mock_file = MagicMock()
             mock_file.processing_status = ProcessingStatus.COMPLETED
-            mock_file.file_type = "pdf"
+            mock_file.file_type = FileType.PDF
             mock_file_get.return_value = mock_file
 
+            mock_vector_store.return_value = MagicMock()
             mock_ask.return_value = mock_stream()
 
             # Existing chat history
@@ -163,17 +169,20 @@ class TestChatEndpoints:
 
     def test_ask_question_processing_error(self, test_client):
         """Test processing error during Q&A."""
-        from app.core.constants import ProcessingStatus
+        from app.core.constants import ProcessingStatus, FileType
         from app.utils.exceptions import ProcessingError
 
         with patch('app.api.v1.endpoints.chat.file_service.get_file', new_callable=AsyncMock) as mock_file_get, \
+             patch('app.api.v1.endpoints.chat.langchain_service.get_or_load_vector_store', new_callable=AsyncMock) as mock_vector_store, \
              patch('app.api.v1.endpoints.chat.langchain_service.ask_question_stream') as mock_ask, \
              patch('app.api.v1.endpoints.chat.get_database') as mock_get_db:
 
             mock_file = MagicMock()
             mock_file.processing_status = ProcessingStatus.COMPLETED
+            mock_file.file_type = FileType.PDF
             mock_file_get.return_value = mock_file
 
+            mock_vector_store.return_value = MagicMock()
             mock_ask.side_effect = ProcessingError("LLM failed")
 
             mock_collection = MagicMock()
@@ -193,15 +202,18 @@ class TestChatEndpoints:
 
     def test_ask_question_generic_error(self, test_client):
         """Test generic error during Q&A."""
-        from app.core.constants import ProcessingStatus
+        from app.core.constants import ProcessingStatus, FileType
 
         with patch('app.api.v1.endpoints.chat.file_service.get_file', new_callable=AsyncMock) as mock_file_get, \
+             patch('app.api.v1.endpoints.chat.langchain_service.get_or_load_vector_store', new_callable=AsyncMock) as mock_vector_store, \
              patch('app.api.v1.endpoints.chat.get_database') as mock_get_db:
 
             mock_file = MagicMock()
             mock_file.processing_status = ProcessingStatus.COMPLETED
+            mock_file.file_type = FileType.PDF
             mock_file_get.return_value = mock_file
 
+            mock_vector_store.return_value = MagicMock()
             mock_get_db.side_effect = Exception("Database connection failed")
 
             response = test_client.post(

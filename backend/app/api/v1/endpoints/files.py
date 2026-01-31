@@ -250,6 +250,8 @@ async def stream_file(
 
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"File not found: {file_id}")
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions as-is
     except Exception as e:
         logger.error(f"Failed to stream file {file_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to stream file")
