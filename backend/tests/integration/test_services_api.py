@@ -17,6 +17,7 @@ class TestLangChainServiceAPI:
     @pytest.mark.asyncio
     async def test_create_vector_store_and_ask_question(self):
         """Test creating vector store and asking questions with real API."""
+        from unittest.mock import patch, AsyncMock, MagicMock
         from app.services.langchain_service import langchain_service
 
         # Sample text for testing
@@ -34,33 +35,43 @@ class TestLangChainServiceAPI:
         file_id = "test-python-file"
         metadata = {"file_id": file_id, "source": "test"}
 
-        try:
-            # Create vector store
-            await langchain_service.create_vector_store(
-                file_id=file_id,
-                text=sample_text,
-                metadata=metadata
-            )
+        # Mock database for vector store persistence
+        with patch('app.services.langchain_service.get_database') as mock_db:
+            mock_collection = MagicMock()
+            mock_result = MagicMock()
+            mock_result.modified_count = 1
+            mock_result.matched_count = 1
+            mock_collection.update_one = AsyncMock(return_value=mock_result)
+            mock_collection.find_one = AsyncMock(return_value=None)
+            mock_db.return_value = {"files": mock_collection}
 
-            # Verify vector store was created
-            assert file_id in langchain_service.vector_stores
+            try:
+                # Create vector store
+                await langchain_service.create_vector_store(
+                    file_id=file_id,
+                    text=sample_text,
+                    metadata=metadata
+                )
 
-            # Ask a question
-            result = await langchain_service.ask_question(
-                file_id=file_id,
-                question="Who created Python?",
-                chat_history=[]
-            )
+                # Verify vector store can be retrieved (stored in Pinecone)
+                vector_store = langchain_service.get_vector_store(file_id)
+                assert vector_store is not None
 
-            assert "answer" in result
-            assert "source_documents" in result
-            # The answer should mention Guido van Rossum
-            assert "Guido" in result["answer"] or "van Rossum" in result["answer"]
+                # Ask a question
+                result = await langchain_service.ask_question(
+                    file_id=file_id,
+                    question="Who created Python?",
+                    chat_history=[]
+                )
 
-        finally:
-            # Cleanup
-            if file_id in langchain_service.vector_stores:
-                del langchain_service.vector_stores[file_id]
+                assert "answer" in result
+                assert "source_documents" in result
+                # The answer should mention Guido van Rossum
+                assert "Guido" in result["answer"] or "van Rossum" in result["answer"]
+
+            finally:
+                # Cleanup - delete vectors from Pinecone
+                await langchain_service.delete_vector_store(file_id)
 
 
 @pytest.mark.integration

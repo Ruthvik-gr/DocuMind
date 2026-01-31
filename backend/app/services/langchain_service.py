@@ -1,17 +1,16 @@
 """
-LangChain service for Q&A functionality using Groq.
+LangChain service for Q&A functionality using Groq and Pinecone.
 """
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_groq import ChatGroq
-from langchain_community.vectorstores import FAISS
+from langchain_pinecone import PineconeVectorStore
 from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
+from pinecone import Pinecone, ServerlessSpec
 from typing import List, Dict, Optional, AsyncGenerator
 import logging
-import pickle
-import base64
 from datetime import datetime
 
 from app.config import get_settings
@@ -24,7 +23,7 @@ settings = get_settings()
 
 
 class LangChainService:
-    """Service for LangChain-powered Q&A using Groq."""
+    """Service for LangChain-powered Q&A using Groq and Pinecone."""
 
     def __init__(self):
         self.text_splitter = RecursiveCharacterTextSplitter(
@@ -43,8 +42,18 @@ class LangChainService:
             temperature=settings.GROQ_TEMPERATURE,
             groq_api_key=settings.GROQ_API_KEY
         )
-        # Store vector stores in memory, keyed by file_id
-        self.vector_stores: Dict[str, FAISS] = {}
+
+        # Initialize Pinecone
+        self.pinecone_client = None
+        self.pinecone_index = None
+        if settings.PINECONE_API_KEY:
+            try:
+                self.pinecone_client = Pinecone(api_key=settings.PINECONE_API_KEY)
+                self._ensure_index_exists()
+                self.pinecone_index = self.pinecone_client.Index(settings.PINECONE_INDEX_NAME)
+                logger.info(f"Connected to Pinecone index: {settings.PINECONE_INDEX_NAME}")
+            except Exception as e:
+                logger.error(f"Failed to initialize Pinecone: {e}")
 
         # Q&A prompt template
         self.qa_prompt = ChatPromptTemplate.from_messages([
@@ -57,6 +66,30 @@ Context:
             MessagesPlaceholder(variable_name="chat_history", optional=True),
             ("human", "{question}")
         ])
+
+    def _ensure_index_exists(self):
+        """Create Pinecone index if it doesn't exist."""
+        try:
+            existing_indexes = [idx.name for idx in self.pinecone_client.list_indexes()]
+            if settings.PINECONE_INDEX_NAME not in existing_indexes:
+                logger.info(f"Creating Pinecone index: {settings.PINECONE_INDEX_NAME}")
+                self.pinecone_client.create_index(
+                    name=settings.PINECONE_INDEX_NAME,
+                    dimension=384,  # all-MiniLM-L6-v2 produces 384-dim vectors
+                    metric="cosine",
+                    spec=ServerlessSpec(
+                        cloud="aws",
+                        region="us-east-1"
+                    )
+                )
+                logger.info(f"Created Pinecone index: {settings.PINECONE_INDEX_NAME}")
+        except Exception as e:
+            logger.error(f"Error ensuring Pinecone index exists: {e}")
+            raise
+
+    def is_configured(self) -> bool:
+        """Check if Pinecone is properly configured."""
+        return self.pinecone_client is not None and settings.PINECONE_API_KEY
 
     def create_documents(self, text: str, metadata: dict) -> List[Document]:
         """
@@ -77,96 +110,101 @@ Context:
         logger.info(f"Created {len(documents)} document chunks")
         return documents
 
-    def _serialize_vector_store(self, vector_store: FAISS) -> str:
-        """Serialize FAISS vector store to base64 string for MongoDB storage."""
-        pickled = pickle.dumps(vector_store)
-        return base64.b64encode(pickled).decode('utf-8')
-
-    def _deserialize_vector_store(self, data: str) -> FAISS:
-        """Deserialize FAISS vector store from base64 string."""
-        pickled = base64.b64decode(data.encode('utf-8'))
-        return pickle.loads(pickled)
-
-    async def _save_vector_store_to_db(self, file_id: str, vector_store: FAISS):
-        """Save vector store to files collection in MongoDB."""
-        try:
-            db = get_database()
-            serialized = self._serialize_vector_store(vector_store)
-            await db[COLLECTION_FILES].update_one(
-                {"file_id": file_id},
-                {"$set": {
-                    "vector_store_data": serialized,
-                    "vector_store_updated_at": datetime.utcnow()
-                }}
-            )
-            logger.info(f"Saved vector store to DB for file {file_id}")
-        except Exception as e:
-            logger.error(f"Failed to save vector store to DB for {file_id}: {e}")
-            # Don't raise - vector store is still in memory
-
-    async def _load_vector_store_from_db(self, file_id: str) -> Optional[FAISS]:
-        """Load vector store from files collection in MongoDB."""
-        try:
-            db = get_database()
-            doc = await db[COLLECTION_FILES].find_one(
-                {"file_id": file_id},
-                {"vector_store_data": 1}
-            )
-            if doc and doc.get("vector_store_data"):
-                vector_store = self._deserialize_vector_store(doc["vector_store_data"])
-                # Cache in memory
-                self.vector_stores[file_id] = vector_store
-                logger.info(f"Loaded vector store from DB for file {file_id}")
-                return vector_store
-            return None
-        except Exception as e:
-            logger.error(f"Failed to load vector store from DB for {file_id}: {e}")
-            return None
-
     async def create_vector_store(
         self,
         file_id: str,
         text: str,
         metadata: dict
-    ) -> FAISS:
+    ) -> PineconeVectorStore:
         """
-        Create and store vector store for a file.
+        Create and store vectors in Pinecone for a file.
 
         Args:
-            file_id: File ID
+            file_id: File ID (used as namespace)
             text: Text content
             metadata: Document metadata
 
         Returns:
-            FAISS vector store
+            PineconeVectorStore instance
         """
+        if not self.is_configured():
+            raise ProcessingError("Pinecone is not configured. Please set PINECONE_API_KEY.")
+
         try:
             documents = self.create_documents(text, metadata)
-            vector_store = await FAISS.afrom_documents(documents, self.embeddings)
-            self.vector_stores[file_id] = vector_store
 
-            # Persist to MongoDB
-            await self._save_vector_store_to_db(file_id, vector_store)
+            # Add file_id to each document's metadata for filtering
+            for doc in documents:
+                doc.metadata["file_id"] = file_id
 
-            logger.info(f"Created vector store for file {file_id}")
+            # Create vector store in Pinecone using file_id as namespace
+            vector_store = PineconeVectorStore.from_documents(
+                documents=documents,
+                embedding=self.embeddings,
+                index_name=settings.PINECONE_INDEX_NAME,
+                namespace=file_id,
+                pinecone_api_key=settings.PINECONE_API_KEY
+            )
+
+            # Update file document to indicate vectors are stored
+            db = get_database()
+            result = await db[COLLECTION_FILES].update_one(
+                {"file_id": file_id},
+                {"$set": {
+                    "vector_store_type": "pinecone",
+                    "vector_store_namespace": file_id,
+                    "vector_store_updated_at": datetime.utcnow(),
+                    "vector_count": len(documents)
+                }}
+            )
+
+            if result.matched_count == 0:
+                logger.warning(f"No document found to update for file {file_id}")
+
+            logger.info(f"Created vector store in Pinecone for file {file_id} with {len(documents)} vectors")
             return vector_store
+
         except Exception as e:
             logger.error(f"Failed to create vector store for {file_id}: {e}")
             raise ProcessingError(f"Vector store creation failed: {e}")
 
-    def get_vector_store(self, file_id: str) -> Optional[FAISS]:
-        """Get vector store for a file from memory cache."""
-        return self.vector_stores.get(file_id)
+    def get_vector_store(self, file_id: str) -> Optional[PineconeVectorStore]:
+        """Get vector store for a file from Pinecone."""
+        if not self.is_configured():
+            return None
 
-    async def get_or_load_vector_store(self, file_id: str) -> Optional[FAISS]:
-        """Get vector store from memory or load from MongoDB."""
-        # Check memory first
-        vector_store = self.vector_stores.get(file_id)
-        if vector_store:
-            return vector_store
+        try:
+            # Create a PineconeVectorStore instance pointing to the file's namespace
+            return PineconeVectorStore(
+                index_name=settings.PINECONE_INDEX_NAME,
+                embedding=self.embeddings,
+                namespace=file_id
+            )
+        except Exception as e:
+            logger.error(f"Failed to get vector store for {file_id}: {e}")
+            return None
 
-        # Try loading from database
-        return await self._load_vector_store_from_db(file_id)
+    async def get_or_load_vector_store(self, file_id: str) -> Optional[PineconeVectorStore]:
+        """Get vector store from Pinecone."""
+        if not self.is_configured():
+            logger.warning("Pinecone is not configured")
+            return None
+
+        # With Pinecone, we just need to create a reference to the namespace
+        # The vectors are already stored in the cloud
+        return self.get_vector_store(file_id)
+
+    async def delete_vector_store(self, file_id: str):
+        """Delete all vectors for a file from Pinecone."""
+        if not self.is_configured():
+            return
+
+        try:
+            # Delete all vectors in the namespace
+            self.pinecone_index.delete(delete_all=True, namespace=file_id)
+            logger.info(f"Deleted vector store from Pinecone for file {file_id}")
+        except Exception as e:
+            logger.error(f"Failed to delete vector store for {file_id}: {e}")
 
     def _format_docs(self, docs: List[Document]) -> str:
         """Format documents into a single string."""
@@ -192,7 +230,7 @@ Context:
         Raises:
             ProcessingError: If Q&A fails
         """
-        vector_store = self.get_vector_store(file_id)
+        vector_store = await self.get_or_load_vector_store(file_id)
         if not vector_store:
             raise ProcessingError(f"No vector store found for file {file_id}")
 
@@ -250,7 +288,7 @@ Context:
         Yields:
             Dicts with 'type' (content/sources) and 'data'
         """
-        vector_store = self.get_vector_store(file_id)
+        vector_store = await self.get_or_load_vector_store(file_id)
         if not vector_store:
             raise ProcessingError(f"No vector store found for file {file_id}")
 

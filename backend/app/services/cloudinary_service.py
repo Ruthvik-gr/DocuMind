@@ -7,6 +7,8 @@ import cloudinary.api
 from typing import BinaryIO, Optional, Dict, Any
 import logging
 import os
+import tempfile
+import requests
 
 from app.config import get_settings
 from app.core.constants import FileType
@@ -41,16 +43,16 @@ class CloudinaryService:
 
     async def upload_file(
         self,
-        file_path: str,
+        file_buffer: BinaryIO,
         file_id: str,
         file_type: FileType,
         original_filename: str
     ) -> Dict[str, Any]:
         """
-        Upload a file to Cloudinary.
+        Upload a file to Cloudinary from file buffer (no local storage).
 
         Args:
-            file_path: Local path to the file
+            file_buffer: File buffer/stream to upload
             file_id: Unique file ID
             file_type: Type of file (pdf, audio, video)
             original_filename: Original filename
@@ -76,9 +78,9 @@ class CloudinaryService:
             folder = f"documind/{file_type.value}s"
             public_id = f"{folder}/{file_id}"
 
-            # Upload to Cloudinary
+            # Upload to Cloudinary directly from buffer
             result = cloudinary.uploader.upload(
-                file_path,
+                file_buffer,
                 public_id=public_id,
                 resource_type=resource_type,
                 overwrite=True,
@@ -172,6 +174,41 @@ class CloudinaryService:
             secure=True,
             flags="attachment"
         )
+
+    async def download_to_temp(self, cloudinary_url: str, suffix: str = None) -> str:
+        """
+        Download a file from Cloudinary to a temporary location for processing.
+
+        Args:
+            cloudinary_url: Cloudinary URL to download
+            suffix: Optional file suffix (e.g., '.pdf', '.mp4')
+
+        Returns:
+            Path to temporary file (caller must delete after use)
+        """
+        if not self.configured:
+            raise ValueError("Cloudinary is not configured")
+
+        try:
+            # Download file from Cloudinary
+            response = requests.get(cloudinary_url, stream=True)
+            response.raise_for_status()
+
+            # Create temporary file
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+
+            # Write content to temp file
+            for chunk in response.iter_content(chunk_size=8192):
+                temp_file.write(chunk)
+
+            temp_file.close()
+            logger.info(f"Downloaded file to temp location: {temp_file.name}")
+
+            return temp_file.name
+
+        except Exception as e:
+            logger.error(f"Failed to download from Cloudinary: {e}")
+            raise
 
 
 # Global service instance

@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   backend:
     build:
@@ -5,15 +7,14 @@ services:
       dockerfile: Dockerfile
     container_name: documind-backend
     ports:
-      - "8000:8000"
+      - "8000:8080"
     volumes:
       - ./backend/storage:/app/storage
-      - ./backend/app:/app/app
     env_file:
       - ./backend/.env
     environment:
       - ENVIRONMENT=development
-      # MONGODB_URL is loaded from .env file (MongoDB Atlas only)
+      - PORT=8080
     networks:
       - documind-network
     restart: unless-stopped
@@ -21,7 +22,7 @@ services:
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.local
       args:
         - VITE_API_URL=http://localhost:8000/api/v1
         - VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID:-}

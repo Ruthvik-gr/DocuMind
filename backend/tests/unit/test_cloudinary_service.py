@@ -4,6 +4,7 @@ Unit tests for Cloudinary service.
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 import cloudinary
+import io
 
 from app.services.cloudinary_service import CloudinaryService
 from app.core.constants import FileType
@@ -39,7 +40,7 @@ class TestCloudinaryUpload:
 
     @pytest.mark.asyncio
     async def test_upload_pdf_file(self):
-        """Test uploading a PDF file."""
+        """Test uploading a PDF file from buffer."""
         service = CloudinaryService()
         service.configured = True
 
@@ -48,9 +49,11 @@ class TestCloudinaryUpload:
             "public_id": "documind/pdfs/test-id"
         }
 
+        file_buffer = io.BytesIO(b"PDF content")
+
         with patch.object(cloudinary.uploader, 'upload', return_value=mock_result):
             result = await service.upload_file(
-                file_path="/tmp/test.pdf",
+                file_buffer=file_buffer,
                 file_id="test-id",
                 file_type=FileType.PDF,
                 original_filename="test.pdf"
@@ -62,7 +65,7 @@ class TestCloudinaryUpload:
 
     @pytest.mark.asyncio
     async def test_upload_video_file(self):
-        """Test uploading a video file."""
+        """Test uploading a video file from buffer."""
         service = CloudinaryService()
         service.configured = True
 
@@ -71,9 +74,11 @@ class TestCloudinaryUpload:
             "public_id": "documind/videos/test-id"
         }
 
+        file_buffer = io.BytesIO(b"Video content")
+
         with patch.object(cloudinary.uploader, 'upload', return_value=mock_result):
             result = await service.upload_file(
-                file_path="/tmp/test.mp4",
+                file_buffer=file_buffer,
                 file_id="test-id",
                 file_type=FileType.VIDEO,
                 original_filename="test.mp4"
@@ -83,7 +88,7 @@ class TestCloudinaryUpload:
 
     @pytest.mark.asyncio
     async def test_upload_audio_file(self):
-        """Test uploading an audio file."""
+        """Test uploading an audio file from buffer."""
         service = CloudinaryService()
         service.configured = True
 
@@ -92,9 +97,11 @@ class TestCloudinaryUpload:
             "public_id": "documind/audios/test-id"
         }
 
+        file_buffer = io.BytesIO(b"Audio content")
+
         with patch.object(cloudinary.uploader, 'upload', return_value=mock_result):
             result = await service.upload_file(
-                file_path="/tmp/test.mp3",
+                file_buffer=file_buffer,
                 file_id="test-id",
                 file_type=FileType.AUDIO,
                 original_filename="test.mp3"
@@ -108,9 +115,11 @@ class TestCloudinaryUpload:
         service = CloudinaryService()
         service.configured = False
 
+        file_buffer = io.BytesIO(b"PDF content")
+
         with pytest.raises(ValueError, match="not configured"):
             await service.upload_file(
-                file_path="/tmp/test.pdf",
+                file_buffer=file_buffer,
                 file_id="test-id",
                 file_type=FileType.PDF,
                 original_filename="test.pdf"
@@ -122,10 +131,12 @@ class TestCloudinaryUpload:
         service = CloudinaryService()
         service.configured = True
 
+        file_buffer = io.BytesIO(b"PDF content")
+
         with patch.object(cloudinary.uploader, 'upload', side_effect=Exception("Upload failed")):
             with pytest.raises(Exception, match="Upload failed"):
                 await service.upload_file(
-                    file_path="/tmp/test.pdf",
+                    file_buffer=file_buffer,
                     file_id="test-id",
                     file_type=FileType.PDF,
                     original_filename="test.pdf"

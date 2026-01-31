@@ -22,20 +22,28 @@ class TestFileService:
 
     @pytest.mark.asyncio
     async def test_upload_file_success(self, file_service):
-        """Test successful file upload."""
+        """Test successful file upload to Cloudinary."""
         from starlette.datastructures import Headers
 
         mock_file = MagicMock()
         mock_file.filename = "test.pdf"
         mock_file.content_type = "application/pdf"
         mock_file.file = io.BytesIO(b"PDF content")
+        mock_file.seek = AsyncMock()
 
         with patch('app.services.file_service.validate_file_type', return_value=FileType.PDF), \
              patch('app.services.file_service.validate_file_size', return_value=1024), \
-             patch('app.services.file_service.file_storage') as mock_storage, \
-             patch('app.services.file_service.get_database') as mock_get_db:
+             patch('app.services.file_service.cloudinary_service') as mock_cloudinary, \
+             patch('app.services.file_service.get_database') as mock_get_db, \
+             patch('app.services.file_service.uuid') as mock_uuid:
 
-            mock_storage.save_file.return_value = ("test-id", "/path/to/test.pdf")
+            mock_uuid.uuid4.return_value = "test-id"
+            mock_cloudinary.is_configured.return_value = True
+            mock_cloudinary.upload_file = AsyncMock(return_value={
+                "cloudinary_url": "https://cloudinary.com/test.pdf",
+                "cloudinary_public_id": "documind/pdfs/test-id",
+                "cloudinary_resource_type": "raw"
+            })
 
             mock_collection = MagicMock()
             mock_collection.insert_one = AsyncMock()
@@ -47,22 +55,32 @@ class TestFileService:
             assert result.filename == "test.pdf"
             assert result.file_type == FileType.PDF
             assert result.processing_status == ProcessingStatus.PENDING
+            assert result.cloudinary_url == "https://cloudinary.com/test.pdf"
+            assert result.file_path is None
 
     @pytest.mark.asyncio
     async def test_upload_file_database_error(self, file_service):
-        """Test file upload with database error."""
+        """Test file upload with database error - should cleanup Cloudinary."""
         mock_file = MagicMock()
         mock_file.filename = "test.pdf"
         mock_file.content_type = "application/pdf"
         mock_file.file = io.BytesIO(b"PDF content")
+        mock_file.seek = AsyncMock()
 
         with patch('app.services.file_service.validate_file_type', return_value=FileType.PDF), \
              patch('app.services.file_service.validate_file_size', return_value=1024), \
-             patch('app.services.file_service.file_storage') as mock_storage, \
-             patch('app.services.file_service.get_database') as mock_get_db:
+             patch('app.services.file_service.cloudinary_service') as mock_cloudinary, \
+             patch('app.services.file_service.get_database') as mock_get_db, \
+             patch('app.services.file_service.uuid') as mock_uuid:
 
-            mock_storage.save_file.return_value = ("test-id", "/path/to/test.pdf")
-            mock_storage.delete_file = MagicMock()
+            mock_uuid.uuid4.return_value = "test-id"
+            mock_cloudinary.is_configured.return_value = True
+            mock_cloudinary.upload_file = AsyncMock(return_value={
+                "cloudinary_url": "https://cloudinary.com/test.pdf",
+                "cloudinary_public_id": "documind/pdfs/test-id",
+                "cloudinary_resource_type": "raw"
+            })
+            mock_cloudinary.delete_file = AsyncMock()
 
             mock_collection = MagicMock()
             mock_collection.insert_one = AsyncMock(side_effect=Exception("DB error"))
@@ -71,7 +89,8 @@ class TestFileService:
             with pytest.raises(DatabaseError):
                 await file_service.upload_file(mock_file, user_id="test-user-id")
 
-            mock_storage.delete_file.assert_called_once()
+            # Should cleanup Cloudinary upload
+            mock_cloudinary.delete_file.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_get_file_success(self, file_service):

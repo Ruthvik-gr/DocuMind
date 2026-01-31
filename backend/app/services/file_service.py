@@ -5,9 +5,9 @@ from fastapi import UploadFile
 from datetime import datetime
 from typing import Optional, Dict, Any
 import logging
+import uuid
 
 from app.core.database import get_database
-from app.core.storage import file_storage
 from app.core.constants import (
     FileType,
     ProcessingStatus,
@@ -26,7 +26,7 @@ class FileService:
 
     async def upload_file(self, file: UploadFile, user_id: str) -> FileModel:
         """
-        Upload and store a file.
+        Upload and store a file directly to Cloudinary (no local storage).
 
         Args:
             file: Uploaded file object
@@ -43,32 +43,60 @@ class FileService:
         file_type = validate_file_type(file)
         file_size = validate_file_size(file)
 
-        # Save file to storage
-        file_id, file_path = file_storage.save_file(file.file, file.filename, file_type)
+        # Generate file ID
+        file_id = str(uuid.uuid4())
 
-        # Create file model
+        # Check if Cloudinary is configured
+        if not cloudinary_service.is_configured():
+            raise DatabaseError("Cloudinary is not configured. File upload requires Cloudinary.")
+
+        # Upload directly to Cloudinary (no local storage)
+        try:
+            # Reset file pointer to beginning
+            await file.seek(0)
+            cloudinary_info = await cloudinary_service.upload_file(
+                file_buffer=file.file,
+                file_id=file_id,
+                file_type=file_type,
+                original_filename=file.filename
+            )
+            logger.info(f"File uploaded to Cloudinary: {file_id}")
+        except Exception as e:
+            logger.error(f"Failed to upload to Cloudinary: {e}")
+            raise DatabaseError(f"Failed to upload to Cloudinary: {e}")
+
+        # Create file model with Cloudinary info
         file_model = FileModel(
             file_id=file_id,
             user_id=user_id,
             filename=file.filename,
             file_type=file_type,
-            file_path=file_path,
+            file_path=None,  # No local storage
             file_size=file_size,
             mime_type=file.content_type,
             upload_date=datetime.utcnow(),
-            processing_status=ProcessingStatus.PENDING
+            processing_status=ProcessingStatus.PENDING,
+            cloudinary_url=cloudinary_info.get("cloudinary_url"),
+            cloudinary_public_id=cloudinary_info.get("cloudinary_public_id"),
+            cloudinary_resource_type=cloudinary_info.get("cloudinary_resource_type")
         )
 
         # Store in database
         db = get_database()
         try:
             await db[COLLECTION_FILES].insert_one(file_model.to_dict())
-            logger.info(f"File uploaded successfully: {file_id}")
+            logger.info(f"File metadata stored in database: {file_id}")
             return file_model
         except Exception as e:
             logger.error(f"Failed to store file metadata: {e}")
-            # Clean up stored file
-            file_storage.delete_file(file_path)
+            # Clean up Cloudinary upload
+            try:
+                await cloudinary_service.delete_file(
+                    cloudinary_info.get("cloudinary_public_id"),
+                    cloudinary_info.get("cloudinary_resource_type")
+                )
+            except Exception as cleanup_error:
+                logger.warning(f"Failed to cleanup Cloudinary upload: {cleanup_error}")
             raise DatabaseError(f"Failed to store file metadata: {e}")
 
     async def get_file(self, file_id: str, user_id: str = None) -> FileModel:
@@ -211,10 +239,10 @@ class FileService:
         """
         db = get_database()
 
-        # Get file first to verify ownership and get path
+        # Get file first to verify ownership
         file_model = await self.get_file(file_id, user_id)
 
-        # Delete from Cloudinary if uploaded there
+        # Delete from Cloudinary
         if file_model.cloudinary_public_id:
             try:
                 await cloudinary_service.delete_file(
@@ -224,9 +252,6 @@ class FileService:
                 logger.info(f"Deleted file from Cloudinary: {file_model.cloudinary_public_id}")
             except Exception as e:
                 logger.warning(f"Failed to delete from Cloudinary: {e}")
-
-        # Delete from local storage
-        file_storage.delete_file(file_model.file_path)
 
         # Delete from database
         result = await db[COLLECTION_FILES].delete_one(

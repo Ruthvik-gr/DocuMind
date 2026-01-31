@@ -29,14 +29,28 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-async def process_file_background(file_id: str, file_path: str, file_type: FileType, filename: str):
-    """Background task to process uploaded file."""
+async def process_file_background(file_id: str, cloudinary_url: str, file_type: FileType, filename: str):
+    """Background task to process uploaded file from Cloudinary."""
+    temp_file_path = None
     try:
         await file_service.update_processing_status(file_id, ProcessingStatus.PROCESSING)
 
+        # Download file from Cloudinary to temp location for processing
+        file_extension = {
+            FileType.PDF: '.pdf',
+            FileType.VIDEO: '.mp4',
+            FileType.AUDIO: '.mp3'
+        }.get(file_type, '')
+
+        temp_file_path = await cloudinary_service.download_to_temp(
+            cloudinary_url=cloudinary_url,
+            suffix=file_extension
+        )
+        logger.info(f"Downloaded file from Cloudinary to temp: {temp_file_path}")
+
         if file_type == FileType.PDF:
             # Extract text from PDF
-            extracted_content = pdf_service.extract_text(file_path)
+            extracted_content = pdf_service.extract_text(temp_file_path)
             await file_service.update_extracted_content(file_id, extracted_content)
 
             # Create vector store for Q&A
@@ -48,7 +62,7 @@ async def process_file_background(file_id: str, file_path: str, file_type: FileT
 
         elif file_type in [FileType.AUDIO, FileType.VIDEO]:
             # Transcribe audio/video
-            extracted_content, metadata = await transcription_service.transcribe_file(file_path)
+            extracted_content, metadata = await transcription_service.transcribe_file(temp_file_path)
             await file_service.update_extracted_content(file_id, extracted_content)
             await file_service.update_metadata(file_id, metadata)
 
@@ -58,29 +72,6 @@ async def process_file_background(file_id: str, file_path: str, file_type: FileT
                 text=extracted_content.text,
                 metadata={"file_id": file_id, "file_type": file_type.value}
             )
-
-        # Upload to Cloudinary (required - no local storage)
-        if not cloudinary_service.is_configured():
-            raise ProcessingError("Cloudinary is not configured. File storage requires Cloudinary.")
-
-        try:
-            cloudinary_info = await cloudinary_service.upload_file(
-                file_path=file_path,
-                file_id=file_id,
-                file_type=file_type,
-                original_filename=filename
-            )
-            await file_service.update_cloudinary_info(file_id, cloudinary_info)
-            logger.info(f"File uploaded to Cloudinary: {file_id}")
-
-            # Delete local file after successful Cloudinary upload
-            from app.core.storage import file_storage
-            file_storage.delete_file(file_path)
-            logger.info(f"Deleted local file after Cloudinary upload: {file_id}")
-
-        except Exception as cloud_error:
-            logger.error(f"Failed to upload to Cloudinary: {cloud_error}")
-            raise ProcessingError(f"Failed to upload to Cloudinary: {cloud_error}")
 
         await file_service.update_processing_status(file_id, ProcessingStatus.COMPLETED)
         logger.info(f"Successfully processed file {file_id}")
@@ -92,6 +83,15 @@ async def process_file_background(file_id: str, file_path: str, file_type: FileT
             ProcessingStatus.FAILED,
             error=str(e)
         )
+    finally:
+        # Clean up temporary file
+        if temp_file_path:
+            try:
+                import os
+                os.unlink(temp_file_path)
+                logger.info(f"Deleted temp file: {temp_file_path}")
+            except Exception as cleanup_error:
+                logger.warning(f"Failed to delete temp file: {cleanup_error}")
 
 
 @router.get("/", response_model=FileListResponse)
@@ -136,19 +136,19 @@ async def upload_file(
     current_user: UserModel = Depends(get_current_user)
 ):
     """
-    Upload a PDF, audio, or video file.
+    Upload a PDF, audio, or video file to Cloudinary.
 
     The file will be processed in the background to extract content.
     """
     try:
-        # Upload and save file
+        # Upload file to Cloudinary (no local storage)
         file_model = await file_service.upload_file(file, current_user.id)
 
         # Add background task for processing
         background_tasks.add_task(
             process_file_background,
             file_model.file_id,
-            file_model.file_path,
+            file_model.cloudinary_url,
             file_model.file_type,
             file_model.filename
         )

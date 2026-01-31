@@ -11,7 +11,7 @@ class TestFileEndpoints:
     """Test file-related endpoints."""
 
     def test_upload_file_pdf(self, test_client):
-        """Test uploading a PDF file."""
+        """Test uploading a PDF file to Cloudinary."""
         with patch('app.api.v1.endpoints.files.file_service.upload_file', new_callable=AsyncMock) as mock_upload, \
              patch('app.api.v1.endpoints.files.process_file_background', new_callable=AsyncMock):
             mock_file_model = MagicMock()
@@ -21,7 +21,7 @@ class TestFileEndpoints:
             mock_file_model.file_size = 1024
             mock_file_model.processing_status = "pending"
             mock_file_model.upload_date = "2024-01-01T00:00:00"
-            mock_file_model.file_path = "/path/to/test.pdf"
+            mock_file_model.cloudinary_url = "https://cloudinary.com/test.pdf"
             mock_upload.return_value = mock_file_model
 
             files = {"file": ("test.pdf", io.BytesIO(b"%PDF-1.4 test content"), "application/pdf")}
@@ -343,54 +343,49 @@ class TestProcessFileBackground:
 
     @pytest.mark.asyncio
     async def test_process_pdf_file(self):
-        """Test processing a PDF file in background."""
+        """Test processing a PDF file from Cloudinary."""
         from app.api.v1.endpoints.files import process_file_background
         from app.core.constants import FileType
         from app.models.file import ExtractedContent
 
         with patch('app.api.v1.endpoints.files.file_service.update_processing_status', new_callable=AsyncMock) as mock_status, \
+             patch('app.api.v1.endpoints.files.cloudinary_service.download_to_temp', new_callable=AsyncMock) as mock_download, \
              patch('app.api.v1.endpoints.files.pdf_service.extract_text') as mock_extract, \
              patch('app.api.v1.endpoints.files.file_service.update_extracted_content', new_callable=AsyncMock) as mock_content, \
              patch('app.api.v1.endpoints.files.langchain_service.create_vector_store', new_callable=AsyncMock), \
-             patch('app.api.v1.endpoints.files.cloudinary_service.is_configured', return_value=True), \
-             patch('app.api.v1.endpoints.files.cloudinary_service.upload_file', new_callable=AsyncMock) as mock_upload, \
-             patch('app.api.v1.endpoints.files.file_service.update_cloudinary_info', new_callable=AsyncMock), \
-             patch('app.core.storage.file_storage') as mock_storage:
+             patch('os.unlink') as mock_unlink:
 
+            mock_download.return_value = "/tmp/temp_file.pdf"
             mock_extract.return_value = ExtractedContent(
                 text="PDF content",
                 word_count=2,
                 language="en",
                 extraction_method="PyPDF2"
             )
-            mock_upload.return_value = {
-                "cloudinary_url": "https://cloudinary.com/test.pdf",
-                "cloudinary_public_id": "test-id"
-            }
-            mock_storage.delete_file = MagicMock()
 
-            await process_file_background("file-id", "/path/to/file.pdf", FileType.PDF, "file.pdf")
+            await process_file_background("file-id", "https://cloudinary.com/test.pdf", FileType.PDF, "file.pdf")
 
             assert mock_status.call_count == 2  # PROCESSING and COMPLETED
             mock_content.assert_called_once()
+            mock_download.assert_called_once()
+            mock_unlink.assert_called_once_with("/tmp/temp_file.pdf")
 
     @pytest.mark.asyncio
     async def test_process_video_file(self):
-        """Test processing a video file in background."""
+        """Test processing a video file from Cloudinary."""
         from app.api.v1.endpoints.files import process_file_background
         from app.core.constants import FileType
         from app.models.file import ExtractedContent, FileMetadata
 
         with patch('app.api.v1.endpoints.files.file_service.update_processing_status', new_callable=AsyncMock), \
+             patch('app.api.v1.endpoints.files.cloudinary_service.download_to_temp', new_callable=AsyncMock) as mock_download, \
              patch('app.api.v1.endpoints.files.transcription_service.transcribe_file', new_callable=AsyncMock) as mock_transcribe, \
              patch('app.api.v1.endpoints.files.file_service.update_extracted_content', new_callable=AsyncMock), \
              patch('app.api.v1.endpoints.files.file_service.update_metadata', new_callable=AsyncMock) as mock_meta, \
              patch('app.api.v1.endpoints.files.langchain_service.create_vector_store', new_callable=AsyncMock), \
-             patch('app.api.v1.endpoints.files.cloudinary_service.is_configured', return_value=True), \
-             patch('app.api.v1.endpoints.files.cloudinary_service.upload_file', new_callable=AsyncMock) as mock_upload, \
-             patch('app.api.v1.endpoints.files.file_service.update_cloudinary_info', new_callable=AsyncMock), \
-             patch('app.core.storage.file_storage') as mock_storage:
+             patch('os.unlink'):
 
+            mock_download.return_value = "/tmp/temp_file.mp4"
             mock_content = ExtractedContent(
                 text="Transcribed video",
                 word_count=2,
@@ -400,30 +395,27 @@ class TestProcessFileBackground:
             mock_metadata = FileMetadata(duration=120, format="mp4")
             mock_transcribe.return_value = (mock_content, mock_metadata)
 
-            mock_upload.return_value = {"cloudinary_url": "url", "cloudinary_public_id": "id"}
-            mock_storage.delete_file = MagicMock()
-
-            await process_file_background("file-id", "/path/to/file.mp4", FileType.VIDEO, "file.mp4")
+            await process_file_background("file-id", "https://cloudinary.com/test.mp4", FileType.VIDEO, "file.mp4")
 
             mock_meta.assert_called_once()
+            mock_download.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_process_audio_file(self):
-        """Test processing an audio file in background."""
+        """Test processing an audio file from Cloudinary."""
         from app.api.v1.endpoints.files import process_file_background
         from app.core.constants import FileType
         from app.models.file import ExtractedContent, FileMetadata
 
         with patch('app.api.v1.endpoints.files.file_service.update_processing_status', new_callable=AsyncMock), \
+             patch('app.api.v1.endpoints.files.cloudinary_service.download_to_temp', new_callable=AsyncMock) as mock_download, \
              patch('app.api.v1.endpoints.files.transcription_service.transcribe_file', new_callable=AsyncMock) as mock_transcribe, \
              patch('app.api.v1.endpoints.files.file_service.update_extracted_content', new_callable=AsyncMock), \
              patch('app.api.v1.endpoints.files.file_service.update_metadata', new_callable=AsyncMock), \
              patch('app.api.v1.endpoints.files.langchain_service.create_vector_store', new_callable=AsyncMock), \
-             patch('app.api.v1.endpoints.files.cloudinary_service.is_configured', return_value=True), \
-             patch('app.api.v1.endpoints.files.cloudinary_service.upload_file', new_callable=AsyncMock) as mock_upload, \
-             patch('app.api.v1.endpoints.files.file_service.update_cloudinary_info', new_callable=AsyncMock), \
-             patch('app.core.storage.file_storage') as mock_storage:
+             patch('os.unlink'):
 
+            mock_download.return_value = "/tmp/temp_file.mp3"
             mock_content = ExtractedContent(
                 text="Transcribed audio",
                 word_count=2,
@@ -433,64 +425,25 @@ class TestProcessFileBackground:
             mock_metadata = FileMetadata(duration=60, format="mp3", sample_rate=44100)
             mock_transcribe.return_value = (mock_content, mock_metadata)
 
-            mock_upload.return_value = {"cloudinary_url": "url", "cloudinary_public_id": "id"}
-            mock_storage.delete_file = MagicMock()
-
-            await process_file_background("file-id", "/path/to/file.mp3", FileType.AUDIO, "file.mp3")
+            await process_file_background("file-id", "https://cloudinary.com/test.mp3", FileType.AUDIO, "file.mp3")
 
             mock_transcribe.assert_called_once()
+            mock_download.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_process_file_cloudinary_not_configured(self):
-        """Test processing file when Cloudinary is not configured."""
+    async def test_process_file_cloudinary_download_fails(self):
+        """Test processing file when Cloudinary download fails."""
         from app.api.v1.endpoints.files import process_file_background
         from app.core.constants import FileType, ProcessingStatus
-        from app.models.file import ExtractedContent
 
         with patch('app.api.v1.endpoints.files.file_service.update_processing_status', new_callable=AsyncMock) as mock_status, \
-             patch('app.api.v1.endpoints.files.pdf_service.extract_text') as mock_extract, \
-             patch('app.api.v1.endpoints.files.file_service.update_extracted_content', new_callable=AsyncMock), \
-             patch('app.api.v1.endpoints.files.langchain_service.create_vector_store', new_callable=AsyncMock), \
-             patch('app.api.v1.endpoints.files.cloudinary_service.is_configured', return_value=False):
+             patch('app.api.v1.endpoints.files.cloudinary_service.download_to_temp', new_callable=AsyncMock) as mock_download:
 
-            mock_extract.return_value = ExtractedContent(
-                text="PDF content",
-                word_count=2,
-                language="en",
-                extraction_method="PyPDF2"
-            )
+            mock_download.side_effect = Exception("Cloudinary download failed")
 
-            await process_file_background("file-id", "/path/to/file.pdf", FileType.PDF, "file.pdf")
+            await process_file_background("file-id", "https://cloudinary.com/test.pdf", FileType.PDF, "file.pdf")
 
-            # Should fail due to Cloudinary not configured
-            last_call = mock_status.call_args_list[-1]
-            assert last_call[0][1] == ProcessingStatus.FAILED
-
-    @pytest.mark.asyncio
-    async def test_process_file_cloudinary_upload_fails(self):
-        """Test processing file when Cloudinary upload fails."""
-        from app.api.v1.endpoints.files import process_file_background
-        from app.core.constants import FileType, ProcessingStatus
-        from app.models.file import ExtractedContent
-
-        with patch('app.api.v1.endpoints.files.file_service.update_processing_status', new_callable=AsyncMock) as mock_status, \
-             patch('app.api.v1.endpoints.files.pdf_service.extract_text') as mock_extract, \
-             patch('app.api.v1.endpoints.files.file_service.update_extracted_content', new_callable=AsyncMock), \
-             patch('app.api.v1.endpoints.files.langchain_service.create_vector_store', new_callable=AsyncMock), \
-             patch('app.api.v1.endpoints.files.cloudinary_service.is_configured', return_value=True), \
-             patch('app.api.v1.endpoints.files.cloudinary_service.upload_file', new_callable=AsyncMock) as mock_upload:
-
-            mock_extract.return_value = ExtractedContent(
-                text="PDF content",
-                word_count=2,
-                language="en",
-                extraction_method="PyPDF2"
-            )
-            mock_upload.side_effect = Exception("Cloudinary upload failed")
-
-            await process_file_background("file-id", "/path/to/file.pdf", FileType.PDF, "file.pdf")
-
-            # Should fail
+            # Should fail due to download error
             last_call = mock_status.call_args_list[-1]
             assert last_call[0][1] == ProcessingStatus.FAILED
 
@@ -501,11 +454,14 @@ class TestProcessFileBackground:
         from app.core.constants import FileType, ProcessingStatus
 
         with patch('app.api.v1.endpoints.files.file_service.update_processing_status', new_callable=AsyncMock) as mock_status, \
-             patch('app.api.v1.endpoints.files.pdf_service.extract_text') as mock_extract:
+             patch('app.api.v1.endpoints.files.cloudinary_service.download_to_temp', new_callable=AsyncMock) as mock_download, \
+             patch('app.api.v1.endpoints.files.pdf_service.extract_text') as mock_extract, \
+             patch('os.unlink'):
 
+            mock_download.return_value = "/tmp/temp_file.pdf"
             mock_extract.side_effect = Exception("PDF extraction failed")
 
-            await process_file_background("file-id", "/path/to/file.pdf", FileType.PDF, "file.pdf")
+            await process_file_background("file-id", "https://cloudinary.com/test.pdf", FileType.PDF, "file.pdf")
 
             # Should fail with FAILED status
             last_call = mock_status.call_args_list[-1]

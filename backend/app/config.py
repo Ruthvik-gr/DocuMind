@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     CLOUDINARY_API_KEY: str = ""
     CLOUDINARY_API_SECRET: str = ""
 
+    # Pinecone
+    PINECONE_API_KEY: str = ""
+    PINECONE_INDEX_NAME: str = "documind"
+
     class Config:
         env_file = ".env"
         case_sensitive = True

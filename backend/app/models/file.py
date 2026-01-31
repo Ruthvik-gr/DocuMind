@@ -30,7 +30,7 @@ class FileModel(BaseModel):
     user_id: str
     filename: str
     file_type: FileType
-    file_path: str
+    file_path: Optional[str] = None  # Deprecated - using Cloudinary instead
     file_size: int
     mime_type: str
     upload_date: datetime
@@ -38,7 +38,7 @@ class FileModel(BaseModel):
     processing_error: Optional[str] = None
     extracted_content: Optional[ExtractedContent] = None
     metadata: Optional[FileMetadata] = None
-    # Cloudinary fields
+    # Cloudinary fields (required for all files)
     cloudinary_url: Optional[str] = None
     cloudinary_public_id: Optional[str] = None
     cloudinary_resource_type: Optional[str] = None

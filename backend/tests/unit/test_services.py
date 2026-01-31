@@ -14,11 +14,12 @@ class TestLangChainService:
         from app.services.langchain_service import langchain_service
         assert langchain_service is not None
 
-    def test_vector_stores_dict(self):
-        """Test vector stores dictionary exists."""
+    def test_pinecone_attributes(self):
+        """Test Pinecone-related attributes exist."""
         from app.services.langchain_service import langchain_service
-        assert hasattr(langchain_service, 'vector_stores')
-        assert isinstance(langchain_service.vector_stores, dict)
+        assert hasattr(langchain_service, 'pinecone_client')
+        assert hasattr(langchain_service, 'pinecone_index')
+        assert hasattr(langchain_service, 'embeddings')
 
 
 class TestSummaryService:
