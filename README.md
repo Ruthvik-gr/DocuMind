@@ -101,7 +101,7 @@ DocuMind/
 ## Live Demo
 
 - **Application URL**: https://documind-web-401977038178.us-central1.run.app/
-- **Demo Video**: [Coming Soon - Will be added]
+- **Demo Video**: https://drive.google.com/file/d/1whCXxETGARERiIfbOewawu9NWLz3AHB6/view?usp=sharing
 
 The demo video will cover:
 - Full application features demonstration
