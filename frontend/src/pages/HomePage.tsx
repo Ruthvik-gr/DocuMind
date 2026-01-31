@@ -41,7 +41,7 @@ export const HomePage = () => {
 
       // If file is still processing, poll for completion
       if (fileData.processing_status === ProcessingStatus.PENDING ||
-          fileData.processing_status === ProcessingStatus.PROCESSING) {
+        fileData.processing_status === ProcessingStatus.PROCESSING) {
         pollFileStatus(fileId);
       }
     } catch (err) {
@@ -138,8 +138,8 @@ export const HomePage = () => {
     >
       {/* Upload Form */}
       {(showUpload || (!currentFile && !isLoadingFile && !selectedFileId)) && (
-        <div className="max-w-3xl mx-auto py-12">
-          <div className="text-center mb-8">
+        <div className="max-w-2xl mx-auto py-8">
+          <div className="text-center mb-6">
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Upload a File</h2>
             <p className="text-gray-600">
               Upload a PDF, audio, or video file to start asking questions
@@ -151,47 +151,71 @@ export const HomePage = () => {
 
       {/* Loading State */}
       {isLoadingFile && (
-        <div className="flex flex-col items-center justify-center py-20">
+        <div className="flex flex-col items-center justify-center py-16">
           <Spinner size="lg" />
-          <p className="mt-4 text-gray-600">Loading file...</p>
+          <p className="mt-3 text-gray-600">Loading file...</p>
         </div>
       )}
 
       {/* File Content */}
       {currentFile && !isLoadingFile && (
         <MediaPlayerProvider>
-          <div className="space-y-6">
-            {/* File Info Header */}
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <div className="flex items-start justify-between">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900 mb-2">
-                    {currentFile.filename}
-                  </h2>
-                  <div className="flex items-center gap-4 text-sm text-gray-600">
-                    <span className="flex items-center gap-1">
-                      <span className="font-medium">Type:</span>
-                      {FILE_TYPE_LABELS[currentFile.file_type]}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <span className="font-medium">Size:</span>
-                      {formatFileSize(currentFile.file_size)}
-                    </span>
-                    {currentFile.extracted_content?.word_count && (
-                      <span className="flex items-center gap-1">
-                        <span className="font-medium">Words:</span>
-                        {currentFile.extracted_content.word_count.toLocaleString()}
-                      </span>
+          <div className="space-y-4">
+            {/* Compact File Info Header */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 px-5 py-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4 min-w-0">
+                  {/* File Type Icon */}
+                  <div className={`
+                    w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0
+                    ${currentFile.file_type === FileType.PDF ? 'bg-red-100 text-red-600' : ''}
+                    ${currentFile.file_type === FileType.AUDIO ? 'bg-purple-100 text-purple-600' : ''}
+                    ${currentFile.file_type === FileType.VIDEO ? 'bg-blue-100 text-blue-600' : ''}
+                  `}>
+                    {currentFile.file_type === FileType.PDF && (
+                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
+                      </svg>
+                    )}
+                    {currentFile.file_type === FileType.AUDIO && (
+                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414z" clipRule="evenodd" />
+                      </svg>
+                    )}
+                    {currentFile.file_type === FileType.VIDEO && (
+                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
+                      </svg>
                     )}
                   </div>
+                  {/* File Details */}
+                  <div className="min-w-0 flex-1">
+                    <h2 className="text-base font-semibold text-gray-900 truncate">
+                      {currentFile.filename}
+                    </h2>
+                    <div className="flex items-center gap-3 text-xs text-gray-500 mt-0.5">
+                      <span>{FILE_TYPE_LABELS[currentFile.file_type]}</span>
+                      <span className="w-1 h-1 rounded-full bg-gray-300"></span>
+                      <span>{formatFileSize(currentFile.file_size)}</span>
+                      {currentFile.extracted_content?.word_count && (
+                        <>
+                          <span className="w-1 h-1 rounded-full bg-gray-300"></span>
+                          <span>{currentFile.extracted_content.word_count.toLocaleString()} words</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
                 </div>
+                {/* Status Badge */}
                 <div className={`
-                  px-3 py-1 rounded-full text-sm font-medium
-                  ${currentFile.processing_status === ProcessingStatus.COMPLETED ? 'bg-green-100 text-green-800' : ''}
-                  ${currentFile.processing_status === ProcessingStatus.PROCESSING ? 'bg-yellow-100 text-yellow-800' : ''}
-                  ${currentFile.processing_status === ProcessingStatus.PENDING ? 'bg-gray-100 text-gray-800' : ''}
-                  ${currentFile.processing_status === ProcessingStatus.FAILED ? 'bg-red-100 text-red-800' : ''}
+                  px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0
+                  ${currentFile.processing_status === ProcessingStatus.COMPLETED ? 'bg-green-100 text-green-700' : ''}
+                  ${currentFile.processing_status === ProcessingStatus.PROCESSING ? 'bg-amber-100 text-amber-700' : ''}
+                  ${currentFile.processing_status === ProcessingStatus.PENDING ? 'bg-gray-100 text-gray-600' : ''}
+                  ${currentFile.processing_status === ProcessingStatus.FAILED ? 'bg-red-100 text-red-700' : ''}
                 `}>
+                  {currentFile.processing_status === ProcessingStatus.COMPLETED && '● '}
+                  {currentFile.processing_status === ProcessingStatus.PROCESSING && '○ '}
                   {currentFile.processing_status.charAt(0).toUpperCase() + currentFile.processing_status.slice(1)}
                 </div>
               </div>
@@ -199,15 +223,22 @@ export const HomePage = () => {
 
             {/* Media Player (for audio/video) */}
             {(currentFile.file_type === FileType.AUDIO || currentFile.file_type === FileType.VIDEO) && (
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {timestamps.length === 0 && currentFile.processing_status === ProcessingStatus.COMPLETED && (
-                  <div className="bg-white rounded-lg shadow-md p-6">
-                    <Button
-                      onClick={handleExtractTimestamps}
-                      isLoading={isExtractingTimestamps}
-                    >
-                      Extract Topics & Timestamps
-                    </Button>
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-100 px-5 py-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">Extract Topics</p>
+                        <p className="text-xs text-gray-500 mt-0.5">Identify key topics and timestamps in your media</p>
+                      </div>
+                      <Button
+                        onClick={handleExtractTimestamps}
+                        isLoading={isExtractingTimestamps}
+                        variant="primary"
+                      >
+                        Extract Timestamps
+                      </Button>
+                    </div>
                   </div>
                 )}
                 <MediaPlayer
@@ -218,16 +249,18 @@ export const HomePage = () => {
               </div>
             )}
 
-            {/* Two Column Layout for Chat and Summary */}
+            {/* Chat and Summary Layout */}
             {currentFile.processing_status === ProcessingStatus.COMPLETED && (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div>
+              <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
+                {/* Chat - Takes more space */}
+                <div className="xl:col-span-3">
                   <ChatInterface
                     fileId={currentFile.file_id}
                     isMediaFile={currentFile.file_type === FileType.AUDIO || currentFile.file_type === FileType.VIDEO}
                   />
                 </div>
-                <div>
+                {/* Summary - Smaller column */}
+                <div className="xl:col-span-2">
                   <SummaryPanel fileId={currentFile.file_id} />
                 </div>
               </div>
@@ -236,31 +269,15 @@ export const HomePage = () => {
             {/* Processing Message */}
             {(currentFile.processing_status === ProcessingStatus.PENDING ||
               currentFile.processing_status === ProcessingStatus.PROCESSING) && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
-                <Spinner size="md" />
-                <p className="mt-4 text-yellow-800">
-                  Your file is being processed. This may take a few minutes for large files.
-                </p>
-              </div>
-            )}
+                <div className="bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-200 rounded-xl px-6 py-5 text-center">
+                  <Spinner size="md" />
+                  <p className="mt-3 text-amber-800 text-sm">
+                    Your file is being processed. This may take a few minutes for large files.
+                  </p>
+                </div>
+              )}
           </div>
         </MediaPlayerProvider>
-      )}
-
-      {/* No File Selected */}
-      {!showUpload && !currentFile && !isLoadingFile && selectedFileId === null && (
-        <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] text-center">
-          <div className="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center mb-6">
-            <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-          </div>
-          <h3 className="text-xl font-semibold text-gray-700 mb-2">No file selected</h3>
-          <p className="text-gray-500 mb-6">
-            Select a file from the sidebar or upload a new one to get started
-          </p>
-          <Button onClick={handleNewUpload}>Upload a File</Button>
-        </div>
       )}
     </MainLayout>
   );

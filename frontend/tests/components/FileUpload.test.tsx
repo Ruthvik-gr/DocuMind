@@ -28,19 +28,19 @@ describe('FileUpload Component', () => {
   it('renders upload area correctly', () => {
     render(<FileUpload />);
 
-    expect(screen.getByText(/Drag and drop your file here/i)).toBeInTheDocument();
-    expect(screen.getByText('Choose File')).toBeInTheDocument();
-    expect(screen.getByText(/Supported: PDF, Audio/i)).toBeInTheDocument();
+    expect(screen.getByText(/Drop your file here/i)).toBeInTheDocument();
+    expect(screen.getByText('browse')).toBeInTheDocument();
+    expect(screen.getByText(/PDF, Audio, or Video/i)).toBeInTheDocument();
   });
 
-  it('opens file input when "Choose File" button is clicked', async () => {
+  it('opens file input when "browse" button is clicked', async () => {
     const user = userEvent.setup();
     render(<FileUpload />);
 
     const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
     const clickSpy = vi.spyOn(fileInput, 'click');
 
-    const button = screen.getByText('Choose File');
+    const button = screen.getByText('browse');
     await user.click(button);
 
     expect(clickSpy).toHaveBeenCalled();
@@ -106,8 +106,7 @@ describe('FileUpload Component', () => {
 
     fireEvent.dragEnter(dropZone);
 
-    expect(dropZone).toHaveClass('border-blue-500');
-    expect(dropZone).toHaveClass('bg-blue-50');
+    expect(dropZone).toHaveClass('border-blue-400');
   });
 
   it('handles drag over event', () => {
@@ -117,8 +116,7 @@ describe('FileUpload Component', () => {
 
     fireEvent.dragOver(dropZone);
 
-    expect(dropZone).toHaveClass('border-blue-500');
-    expect(dropZone).toHaveClass('bg-blue-50');
+    expect(dropZone).toHaveClass('border-blue-400');
   });
 
   it('handles drag leave event', () => {
@@ -128,11 +126,11 @@ describe('FileUpload Component', () => {
 
     // First drag enter
     fireEvent.dragEnter(dropZone);
-    expect(dropZone).toHaveClass('border-blue-500');
+    expect(dropZone).toHaveClass('border-blue-400');
 
     // Then drag leave
     fireEvent.dragLeave(dropZone);
-    expect(dropZone).not.toHaveClass('border-blue-500');
+    expect(dropZone).not.toHaveClass('border-blue-400');
   });
 
   it('uploads file via drag and drop', async () => {
@@ -180,10 +178,10 @@ describe('FileUpload Component', () => {
     render(<FileUpload />);
 
     // Check that progress text is displayed
-    expect(screen.getByText('45% uploaded')).toBeInTheDocument();
+    expect(screen.getByText('45%')).toBeInTheDocument();
 
-    // Check that progress bar element exists
-    const progressBar = document.querySelector('.bg-blue-600') as HTMLElement;
+    // Check that progress bar element exists (gradient style)
+    const progressBar = document.querySelector('.bg-gradient-to-r') as HTMLElement;
     expect(progressBar).toBeInTheDocument();
   });
 
@@ -201,8 +199,9 @@ describe('FileUpload Component', () => {
 
     expect(screen.getByText('Upload failed: File too large')).toBeInTheDocument();
 
-    const errorDiv = screen.getByText('Upload failed: File too large').closest('div');
-    expect(errorDiv).toHaveClass('bg-red-50');
+    // The error message is nested inside a flex div, which is inside the styled container
+    const errorContainer = screen.getByText('Upload failed: File too large').closest('.bg-red-50');
+    expect(errorContainer).toBeInTheDocument();
   });
 
   it('displays success message when upload completes', () => {
@@ -228,8 +227,9 @@ describe('FileUpload Component', () => {
 
     expect(screen.getByText(/test.pdf uploaded successfully!/i)).toBeInTheDocument();
 
-    const successDiv = screen.getByText(/test.pdf uploaded successfully!/i).closest('div');
-    expect(successDiv).toHaveClass('bg-green-50');
+    // The success message is nested inside a flex div, which is inside the styled container
+    const successContainer = screen.getByText(/test.pdf uploaded successfully!/i).closest('.bg-green-50');
+    expect(successContainer).toBeInTheDocument();
   });
 
   it('disables file input when uploading', () => {
@@ -248,7 +248,7 @@ describe('FileUpload Component', () => {
     expect(fileInput).toBeDisabled();
   });
 
-  it('disables "Choose File" button when uploading', () => {
+  it('disables "browse" button when uploading', () => {
     vi.mocked(useFileUploadModule.useFileUpload).mockReturnValue({
       uploadFile: mockUploadFile,
       resetUpload: mockResetUpload,
@@ -260,7 +260,7 @@ describe('FileUpload Component', () => {
 
     render(<FileUpload />);
 
-    const button = screen.getByText('Choose File');
+    const button = screen.getByText('browse');
     expect(button).toBeDisabled();
   });
 

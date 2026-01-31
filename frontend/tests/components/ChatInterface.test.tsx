@@ -15,13 +15,15 @@ describe('ChatInterface Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    // Default mock
+    // Default mock with all required properties
     vi.mocked(useChatModule.useChat).mockReturnValue({
       askQuestion: mockAskQuestion,
       loadHistory: mockLoadHistory,
       isLoading: false,
       chatHistory: null,
       error: null,
+      streamingMessage: '',
+      lastSuggestedTimestamp: undefined,
     });
   });
 
@@ -210,7 +212,10 @@ describe('ChatInterface Component', () => {
 
     render(<ChatInterface fileId={fileId} />);
 
-    const messageElement = screen.getByText('Assistant message').closest('div');
+    // Assistant messages have markdown wrapper, need to go up 2 levels
+    const textElement = screen.getByText('Assistant message');
+    const proseDiv = textElement.closest('.prose');
+    const messageElement = proseDiv?.parentElement;
     expect(messageElement).toHaveClass('bg-gray-100');
     expect(messageElement).toHaveClass('text-gray-900');
   });
@@ -226,8 +231,8 @@ describe('ChatInterface Component', () => {
 
     render(<ChatInterface fileId={fileId} />);
 
-    // When isLoading is true, button shows "Loading..." instead of "Send"
-    const sendButton = screen.getByRole('button', { name: /loading/i });
+    // When isLoading is true, the send button should be disabled
+    const sendButton = screen.getByRole('button', { name: /send/i });
     expect(sendButton).toBeDisabled();
   });
 
@@ -242,8 +247,8 @@ describe('ChatInterface Component', () => {
 
     render(<ChatInterface fileId={fileId} />);
 
-    // Spinner should be visible
-    expect(document.querySelector('.animate-spin')).toBeInTheDocument();
+    // Bouncing dots loading indicator should be visible
+    expect(document.querySelector('.animate-bounce')).toBeInTheDocument();
   });
 
   it('displays error message when error occurs', () => {

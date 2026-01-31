@@ -10,8 +10,13 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
 from typing import List, Dict, Optional, AsyncGenerator
 import logging
+import pickle
+import base64
+from datetime import datetime
 
 from app.config import get_settings
+from app.core.database import get_database
+from app.core.constants import COLLECTION_FILES
 from app.utils.exceptions import ProcessingError
 
 logger = logging.getLogger(__name__)
@@ -43,9 +48,9 @@ class LangChainService:
 
         # Q&A prompt template
         self.qa_prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are a helpful assistant that answers questions based on the provided context.
-Use the following context to answer the question. If you cannot find the answer in the context,
-say "I don't have enough information to answer this question based on the document."
+            ("system", """Answer questions using only the provided context. Give direct, concise answers without any preface like "Based on the document", "According to the context", or "The document states". Just provide the answer directly.
+
+If you cannot find the answer in the context, simply say "I couldn't find this information in the document."
 
 Context:
 {context}"""),
@@ -72,6 +77,52 @@ Context:
         logger.info(f"Created {len(documents)} document chunks")
         return documents
 
+    def _serialize_vector_store(self, vector_store: FAISS) -> str:
+        """Serialize FAISS vector store to base64 string for MongoDB storage."""
+        pickled = pickle.dumps(vector_store)
+        return base64.b64encode(pickled).decode('utf-8')
+
+    def _deserialize_vector_store(self, data: str) -> FAISS:
+        """Deserialize FAISS vector store from base64 string."""
+        pickled = base64.b64decode(data.encode('utf-8'))
+        return pickle.loads(pickled)
+
+    async def _save_vector_store_to_db(self, file_id: str, vector_store: FAISS):
+        """Save vector store to files collection in MongoDB."""
+        try:
+            db = get_database()
+            serialized = self._serialize_vector_store(vector_store)
+            await db[COLLECTION_FILES].update_one(
+                {"file_id": file_id},
+                {"$set": {
+                    "vector_store_data": serialized,
+                    "vector_store_updated_at": datetime.utcnow()
+                }}
+            )
+            logger.info(f"Saved vector store to DB for file {file_id}")
+        except Exception as e:
+            logger.error(f"Failed to save vector store to DB for {file_id}: {e}")
+            # Don't raise - vector store is still in memory
+
+    async def _load_vector_store_from_db(self, file_id: str) -> Optional[FAISS]:
+        """Load vector store from files collection in MongoDB."""
+        try:
+            db = get_database()
+            doc = await db[COLLECTION_FILES].find_one(
+                {"file_id": file_id},
+                {"vector_store_data": 1}
+            )
+            if doc and doc.get("vector_store_data"):
+                vector_store = self._deserialize_vector_store(doc["vector_store_data"])
+                # Cache in memory
+                self.vector_stores[file_id] = vector_store
+                logger.info(f"Loaded vector store from DB for file {file_id}")
+                return vector_store
+            return None
+        except Exception as e:
+            logger.error(f"Failed to load vector store from DB for {file_id}: {e}")
+            return None
+
     async def create_vector_store(
         self,
         file_id: str,
@@ -93,6 +144,10 @@ Context:
             documents = self.create_documents(text, metadata)
             vector_store = await FAISS.afrom_documents(documents, self.embeddings)
             self.vector_stores[file_id] = vector_store
+
+            # Persist to MongoDB
+            await self._save_vector_store_to_db(file_id, vector_store)
+
             logger.info(f"Created vector store for file {file_id}")
             return vector_store
         except Exception as e:
@@ -100,8 +155,18 @@ Context:
             raise ProcessingError(f"Vector store creation failed: {e}")
 
     def get_vector_store(self, file_id: str) -> Optional[FAISS]:
-        """Get vector store for a file."""
+        """Get vector store for a file from memory cache."""
         return self.vector_stores.get(file_id)
+
+    async def get_or_load_vector_store(self, file_id: str) -> Optional[FAISS]:
+        """Get vector store from memory or load from MongoDB."""
+        # Check memory first
+        vector_store = self.vector_stores.get(file_id)
+        if vector_store:
+            return vector_store
+
+        # Try loading from database
+        return await self._load_vector_store_from_db(file_id)
 
     def _format_docs(self, docs: List[Document]) -> str:
         """Format documents into a single string."""

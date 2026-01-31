@@ -1,12 +1,44 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { chatService } from '../../src/services/chatService';
 import api from '../../src/services/api';
 
 vi.mock('../../src/services/api');
 
+// Helper to create a mock ReadableStream
+function createMockStream(chunks: string[]) {
+  let index = 0;
+  return {
+    getReader: () => ({
+      read: async () => {
+        if (index < chunks.length) {
+          const value = new TextEncoder().encode(chunks[index++]);
+          return { done: false, value };
+        }
+        return { done: true, value: undefined };
+      },
+      releaseLock: vi.fn(),
+    }),
+  };
+}
+
 describe('chatService', () => {
+  const originalFetch = global.fetch;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    // Mock localStorage
+    Object.defineProperty(window, 'localStorage', {
+      value: {
+        getItem: vi.fn(() => 'test-token'),
+        setItem: vi.fn(),
+        removeItem: vi.fn(),
+      },
+      writable: true,
+    });
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
   });
 
   describe('askQuestion', () => {
@@ -85,6 +117,127 @@ describe('chatService', () => {
       vi.mocked(api.get).mockRejectedValue(new Error('History not found'));
 
       await expect(chatService.getHistory('test-file-id')).rejects.toThrow('History not found');
+    });
+  });
+
+  describe('askQuestionStreaming', () => {
+    it('should handle streaming response with content chunks', async () => {
+      const mockStream = createMockStream([
+        'data: {"type":"content","content":"Hello "}\n\n',
+        'data: {"type":"content","content":"world"}\n\n',
+        'data: {"type":"done"}\n\n',
+      ]);
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        body: mockStream,
+      });
+
+      const onChunk = vi.fn();
+      const onComplete = vi.fn();
+
+      await chatService.askQuestionStreaming(
+        'test-file-id',
+        { question: 'Test question' },
+        onChunk,
+        onComplete
+      );
+
+      expect(onChunk).toHaveBeenCalledWith('Hello ');
+      expect(onChunk).toHaveBeenCalledWith('world');
+      expect(onComplete).toHaveBeenCalled();
+    });
+
+    it('should handle streaming response with suggested timestamp', async () => {
+      const mockStream = createMockStream([
+        'data: {"type":"content","content":"Answer"}\n\n',
+        'data: {"type":"done","suggested_timestamp":30}\n\n',
+      ]);
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        body: mockStream,
+      });
+
+      const onChunk = vi.fn();
+      const onComplete = vi.fn();
+
+      const result = await chatService.askQuestionStreaming(
+        'test-file-id',
+        { question: 'Test question' },
+        onChunk,
+        onComplete
+      );
+
+      expect(result.suggested_timestamp).toBe(30);
+      expect(onComplete).toHaveBeenCalledWith(30);
+    });
+
+    it('should handle HTTP error response', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+      });
+
+      const onChunk = vi.fn();
+
+      await expect(
+        chatService.askQuestionStreaming(
+          'test-file-id',
+          { question: 'Test question' },
+          onChunk
+        )
+      ).rejects.toThrow('HTTP error! status: 500');
+    });
+
+    it('should log streaming error event', async () => {
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const mockStream = createMockStream([
+        'data: {"type":"error","error":"Something went wrong"}\n\n',
+      ]);
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        body: mockStream,
+      });
+
+      const onChunk = vi.fn();
+
+      // The error is caught and logged, not thrown
+      await chatService.askQuestionStreaming(
+        'test-file-id',
+        { question: 'Test question' },
+        onChunk
+      );
+
+      expect(consoleErrorSpy).toHaveBeenCalled();
+      consoleErrorSpy.mockRestore();
+    });
+
+    it('should include authorization header', async () => {
+      const mockStream = createMockStream([
+        'data: {"type":"done"}\n\n',
+      ]);
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        body: mockStream,
+      });
+
+      await chatService.askQuestionStreaming(
+        'test-file-id',
+        { question: 'Test question' },
+        vi.fn()
+      );
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'Authorization': 'Bearer test-token',
+          }),
+        })
+      );
     });
   });
 });

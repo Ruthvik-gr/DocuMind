@@ -62,7 +62,7 @@ class SummaryService:
                 model=settings.GROQ_MODEL,
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"Please summarize the following content:\n\n{text}"}
+                    {"role": "user", "content": text}
                 ],
                 temperature=0.3,
                 max_tokens=500 if summary_type == SummaryType.BRIEF else 1000
@@ -119,16 +119,18 @@ class SummaryService:
         """Get system prompt based on summary type."""
         prompts = {
             SummaryType.BRIEF: (
-                "You are a helpful assistant that creates brief, concise summaries. "
-                "Provide a 2-3 sentence overview of the main points."
+                "Create a brief 2-3 sentence summary. Start directly with the content - "
+                "no preface like 'Here is a summary' or 'This document discusses'. Just summarize."
             ),
             SummaryType.DETAILED: (
-                "You are a helpful assistant that creates detailed summaries. "
-                "Provide a comprehensive summary covering all major topics and key details."
+                "Create a comprehensive summary covering all major topics and key details. "
+                "Start directly with the content - no preface like 'Here is a detailed summary' or "
+                "'This document covers'. Just provide the summary."
             ),
             SummaryType.KEY_POINTS: (
-                "You are a helpful assistant that extracts key points. "
-                "Provide a bullet-point list of the most important points and takeaways."
+                "Extract the most important points as a bullet-point list. "
+                "Start directly with the bullet points - no preface like 'Here are the key points' or "
+                "'The main takeaways are'. Just list the points."
             )
         }
         return prompts.get(summary_type, prompts[SummaryType.BRIEF])

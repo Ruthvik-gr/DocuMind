@@ -152,9 +152,9 @@ describe('MediaPlayer Component', () => {
       <MediaPlayer fileUrl="/test-video.mp4" fileType={FileType.VIDEO} timestamps={mockTimestamps} />
     );
 
-    // Check that the active timestamp has highlighting class
+    // Check that the active timestamp has highlighting class (now using indigo)
     const timestampItems = container.querySelectorAll('.cursor-pointer');
-    expect(timestampItems[1]).toHaveClass('bg-blue-100');
+    expect(timestampItems[1]).toHaveClass('bg-indigo-50');
   });
 
   it('attaches event handlers to video element', () => {
@@ -274,7 +274,8 @@ describe('MediaPlayer Component', () => {
 
     const timestampItems = container.querySelectorAll('.cursor-pointer');
     timestampItems.forEach((item) => {
-      expect(item).toHaveClass('bg-gray-50');
+      // Non-active timestamps now have bg-white styling
+      expect(item).toHaveClass('bg-white');
     });
   });
 });

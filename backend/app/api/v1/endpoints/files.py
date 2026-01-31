@@ -2,12 +2,10 @@
 File management endpoints.
 """
 from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks, Depends, Query
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from typing import List, Optional
-from bson import ObjectId
+from typing import Optional
 import logging
-import os
 
 from app.services.file_service import file_service
 from app.services.pdf_service import pdf_service
@@ -61,19 +59,28 @@ async def process_file_background(file_id: str, file_path: str, file_type: FileT
                 metadata={"file_id": file_id, "file_type": file_type.value}
             )
 
-        # Upload to Cloudinary if configured
-        if cloudinary_service.is_configured():
-            try:
-                cloudinary_info = await cloudinary_service.upload_file(
-                    file_path=file_path,
-                    file_id=file_id,
-                    file_type=file_type,
-                    original_filename=filename
-                )
-                await file_service.update_cloudinary_info(file_id, cloudinary_info)
-                logger.info(f"File uploaded to Cloudinary: {file_id}")
-            except Exception as cloud_error:
-                logger.warning(f"Failed to upload to Cloudinary, using local storage: {cloud_error}")
+        # Upload to Cloudinary (required - no local storage)
+        if not cloudinary_service.is_configured():
+            raise ProcessingError("Cloudinary is not configured. File storage requires Cloudinary.")
+
+        try:
+            cloudinary_info = await cloudinary_service.upload_file(
+                file_path=file_path,
+                file_id=file_id,
+                file_type=file_type,
+                original_filename=filename
+            )
+            await file_service.update_cloudinary_info(file_id, cloudinary_info)
+            logger.info(f"File uploaded to Cloudinary: {file_id}")
+
+            # Delete local file after successful Cloudinary upload
+            from app.core.storage import file_storage
+            file_storage.delete_file(file_path)
+            logger.info(f"Deleted local file after Cloudinary upload: {file_id}")
+
+        except Exception as cloud_error:
+            logger.error(f"Failed to upload to Cloudinary: {cloud_error}")
+            raise ProcessingError(f"Failed to upload to Cloudinary: {cloud_error}")
 
         await file_service.update_processing_status(file_id, ProcessingStatus.COMPLETED)
         logger.info(f"Successfully processed file {file_id}")
@@ -232,19 +239,14 @@ async def stream_file(
     try:
         file_model = await file_service.get_file(file_id, user_id)
 
-        # If file is on Cloudinary, redirect to Cloudinary URL
-        if file_model.cloudinary_url:
-            return RedirectResponse(url=file_model.cloudinary_url)
+        # Files are stored in Cloudinary only
+        if not file_model.cloudinary_url:
+            raise HTTPException(
+                status_code=404,
+                detail="File not available for streaming. Processing may not be complete."
+            )
 
-        # Otherwise serve from local storage
-        if not os.path.exists(file_model.file_path):
-            raise HTTPException(status_code=404, detail="File not found on disk")
-
-        return FileResponse(
-            path=file_model.file_path,
-            filename=file_model.filename,
-            media_type=file_model.mime_type
-        )
+        return RedirectResponse(url=file_model.cloudinary_url)
 
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"File not found: {file_id}")

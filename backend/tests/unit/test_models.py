@@ -47,6 +47,7 @@ class TestFileModels:
         """Test FileModel creation."""
         file = FileModel(
             file_id="test-id",
+            user_id="user-123",
             filename="test.pdf",
             file_type=FileType.PDF,
             file_path="/path/to/file",
@@ -57,6 +58,7 @@ class TestFileModels:
         )
 
         assert file.file_id == "test-id"
+        assert file.user_id == "user-123"
         assert file.file_type == FileType.PDF
         assert file.processing_status == ProcessingStatus.PENDING
 
@@ -64,6 +66,7 @@ class TestFileModels:
         """Test FileModel to_dict method."""
         file = FileModel(
             file_id="test-id",
+            user_id="user-123",
             filename="test.pdf",
             file_type=FileType.PDF,
             file_path="/path/to/file",
@@ -82,6 +85,7 @@ class TestFileModels:
         data = file.to_dict()
 
         assert data["file_id"] == "test-id"
+        assert data["user_id"] == "user-123"
         assert data["file_type"] == "pdf"
         assert data["processing_status"] == "completed"
         assert "extracted_content" in data
@@ -90,6 +94,7 @@ class TestFileModels:
         """Test FileModel from_dict method."""
         data = {
             "file_id": "test-id",
+            "user_id": "user-123",
             "filename": "test.pdf",
             "file_type": "pdf",
             "file_path": "/path/to/file",
@@ -110,6 +115,7 @@ class TestFileModels:
         file = FileModel.from_dict(data)
 
         assert file.file_id == "test-id"
+        assert file.user_id == "user-123"
         assert file.file_type == FileType.PDF
         assert file.extracted_content.text == "content"
 
@@ -147,6 +153,7 @@ class TestChatModels:
         """Test ChatHistoryModel to_dict method."""
         chat = ChatHistoryModel(
             chat_id="chat-1",
+            user_id="user-123",
             file_id="file-1",
             messages=[
                 Message(
@@ -164,6 +171,7 @@ class TestChatModels:
         data = chat.to_dict()
 
         assert data["chat_id"] == "chat-1"
+        assert data["user_id"] == "user-123"
         assert len(data["messages"]) == 1
         assert data["messages"][0]["role"] == "user"
 
@@ -171,6 +179,7 @@ class TestChatModels:
         """Test ChatHistoryModel from_dict method."""
         data = {
             "chat_id": "chat-1",
+            "user_id": "user-123",
             "file_id": "file-1",
             "messages": [
                 {
@@ -195,6 +204,7 @@ class TestChatModels:
         chat = ChatHistoryModel.from_dict(data)
 
         assert chat.chat_id == "chat-1"
+        assert chat.user_id == "user-123"
         assert len(chat.messages) == 1
         assert chat.messages[0].role == MessageRole.ASSISTANT
         assert chat.messages[0].metadata.model == "llama"
@@ -222,6 +232,7 @@ class TestSummaryModels:
         """Test SummaryModel to_dict method."""
         summary = SummaryModel(
             summary_id="sum-1",
+            user_id="user-123",
             file_id="file-1",
             summary_type=SummaryType.BRIEF,
             content="Brief summary",
@@ -233,6 +244,7 @@ class TestSummaryModels:
         data = summary.to_dict()
 
         assert data["summary_id"] == "sum-1"
+        assert data["user_id"] == "user-123"
         assert data["summary_type"] == "brief"
         assert data["token_count"]["total"] == 150
 
@@ -240,6 +252,7 @@ class TestSummaryModels:
         """Test SummaryModel from_dict method."""
         data = {
             "summary_id": "sum-1",
+            "user_id": "user-123",
             "file_id": "file-1",
             "summary_type": "detailed",
             "content": "Detailed summary",
@@ -252,6 +265,7 @@ class TestSummaryModels:
         summary = SummaryModel.from_dict(data)
 
         assert summary.summary_id == "sum-1"
+        assert summary.user_id == "user-123"
         assert summary.summary_type == SummaryType.DETAILED
         assert summary.content == "Detailed summary"
 
@@ -289,6 +303,7 @@ class TestTimestampModels:
         """Test TimestampModel to_dict method."""
         timestamp = TimestampModel(
             timestamp_id="ts-1",
+            user_id="user-123",
             file_id="file-1",
             timestamps=[
                 TimestampEntry(
@@ -310,6 +325,7 @@ class TestTimestampModels:
         data = timestamp.to_dict()
 
         assert data["timestamp_id"] == "ts-1"
+        assert data["user_id"] == "user-123"
         assert len(data["timestamps"]) == 1
         assert data["extraction_metadata"]["total_topics"] == 1
 
@@ -317,6 +333,7 @@ class TestTimestampModels:
         """Test TimestampModel from_dict method."""
         data = {
             "timestamp_id": "ts-1",
+            "user_id": "user-123",
             "file_id": "file-1",
             "timestamps": [
                 {

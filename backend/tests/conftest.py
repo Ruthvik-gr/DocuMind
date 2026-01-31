@@ -3,9 +3,9 @@ Pytest configuration and fixtures.
 """
 import pytest
 from fastapi.testclient import TestClient
-from mongomock_motor import AsyncMongoMockClient
 from unittest.mock import AsyncMock, patch, MagicMock
 import io
+import os
 
 from app.main import app
 from app.core.database import get_database
@@ -13,20 +13,49 @@ from app.core.database import get_database
 
 @pytest.fixture
 def mock_db():
-    """Mock MongoDB for testing."""
-    client = AsyncMongoMockClient()
-    db = client.test_database
-    return db
+    """Mock database that returns AsyncMock for all collection operations."""
+    mock = MagicMock()
+
+    # Mock collection operations
+    mock_collection = AsyncMock()
+    mock_collection.find_one = AsyncMock(return_value=None)
+    mock_collection.insert_one = AsyncMock(return_value=MagicMock(inserted_id="test_id"))
+    mock_collection.update_one = AsyncMock(return_value=MagicMock(modified_count=1))
+    mock_collection.delete_one = AsyncMock(return_value=MagicMock(deleted_count=1))
+    mock_collection.find = MagicMock(return_value=AsyncMock())
+
+    # Return mock collection for any collection access
+    mock.__getitem__ = MagicMock(return_value=mock_collection)
+
+    return mock
 
 
 @pytest.fixture
-def test_client(mock_db):
-    """FastAPI test client with mocked database."""
-    # Mock the database connection functions where they're imported in main.py
+def mock_user():
+    """Create a mock user for testing."""
+    from app.models.user import UserModel
+    return UserModel(
+        id="507f1f77bcf86cd799439011",
+        email="test@example.com",
+        name="Test User",
+        auth_provider="local",
+        password_hash="hashed_password"
+    )
+
+
+@pytest.fixture
+def test_client(mock_db, mock_user):
+    """FastAPI test client with mocked database and authentication."""
+    from app.core.auth import get_current_user
+
+    async def mock_get_current_user():
+        return mock_user
+
     with patch('app.main.connect_to_mongo', new_callable=AsyncMock) as mock_connect, \
          patch('app.main.close_mongo_connection', new_callable=AsyncMock) as mock_close:
 
         app.dependency_overrides[get_database] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = mock_get_current_user
 
         with TestClient(app) as client:
             yield client
@@ -37,7 +66,6 @@ def test_client(mock_db):
 @pytest.fixture
 def sample_pdf_file():
     """Sample PDF file for testing."""
-    # Create a simple PDF-like content
     pdf_content = b"%PDF-1.4\n%Test PDF Content"
     return ("test.pdf", io.BytesIO(pdf_content), "application/pdf")
 
@@ -103,3 +131,26 @@ def mock_whisper(monkeypatch):
             return segments, info
 
     monkeypatch.setattr("faster_whisper.WhisperModel", MockWhisperModel)
+
+
+@pytest.fixture
+def mock_cloudinary(monkeypatch):
+    """Mock Cloudinary service."""
+    def mock_upload(*args, **kwargs):
+        return {
+            "secure_url": "https://cloudinary.com/test/video.mp4",
+            "public_id": "documind/videos/test-id",
+            "resource_type": "video"
+        }
+
+    def mock_destroy(*args, **kwargs):
+        return {"result": "ok"}
+
+    monkeypatch.setattr("cloudinary.uploader.upload", mock_upload)
+    monkeypatch.setattr("cloudinary.uploader.destroy", mock_destroy)
+
+
+@pytest.fixture
+def mock_auth_token():
+    """Mock authentication for tests."""
+    return "test-jwt-token"

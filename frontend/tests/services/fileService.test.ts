@@ -99,4 +99,64 @@ describe('fileService', () => {
       await expect(fileService.getFile('invalid-id')).rejects.toThrow('File not found');
     });
   });
+
+  describe('listFiles', () => {
+    it('should list files successfully', async () => {
+      const mockResponse = {
+        data: {
+          files: [
+            {
+              file_id: 'file-1',
+              filename: 'test1.pdf',
+              file_type: 'pdf',
+              file_size: 1024,
+              processing_status: 'completed',
+              created_at: '2024-01-15T10:00:00Z',
+              has_chat: true,
+            },
+            {
+              file_id: 'file-2',
+              filename: 'test2.mp4',
+              file_type: 'video',
+              file_size: 2048,
+              processing_status: 'completed',
+              created_at: '2024-01-15T11:00:00Z',
+              has_chat: false,
+            },
+          ],
+          total: 2,
+        },
+      };
+
+      vi.mocked(api.get).mockResolvedValue(mockResponse);
+
+      const result = await fileService.listFiles();
+
+      expect(api.get).toHaveBeenCalledWith('/files/');
+      expect(result.files).toHaveLength(2);
+      expect(result.total).toBe(2);
+    });
+
+    it('should handle list files error', async () => {
+      vi.mocked(api.get).mockRejectedValue(new Error('Failed to list files'));
+
+      await expect(fileService.listFiles()).rejects.toThrow('Failed to list files');
+    });
+  });
+
+  describe('deleteFile', () => {
+    it('should delete file successfully', async () => {
+      vi.mocked(api.delete).mockResolvedValue({});
+
+      await fileService.deleteFile('test-file-id');
+
+      expect(api.delete).toHaveBeenCalledWith('/files/test-file-id');
+    });
+
+    it('should handle delete file error', async () => {
+      vi.mocked(api.delete).mockRejectedValue(new Error('Failed to delete'));
+
+      await expect(fileService.deleteFile('test-file-id')).rejects.toThrow('Failed to delete');
+    });
+  });
 });

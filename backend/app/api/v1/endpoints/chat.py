@@ -45,6 +45,22 @@ async def ask_question(
                 yield f"data: {json.dumps({'error': f'File is still being processed. Status: {file_model.processing_status.value}'})}\n\n"
                 return
 
+            # Try to get vector store from memory or load from DB
+            vector_store = await langchain_service.get_or_load_vector_store(file_id)
+
+            # If still not found, recreate from extracted content
+            if not vector_store:
+                if file_model.extracted_content and file_model.extracted_content.text:
+                    logger.info(f"Recreating vector store for file {file_id}")
+                    await langchain_service.create_vector_store(
+                        file_id=file_id,
+                        text=file_model.extracted_content.text,
+                        metadata={"file_id": file_id, "file_type": file_model.file_type.value}
+                    )
+                else:
+                    yield f"data: {json.dumps({'error': 'File has no extracted content for Q&A'})}\n\n"
+                    return
+
             # Get or create chat history
             db = get_database()
             chat_id = request.chat_id or f"chat-{uuid.uuid4()}"
