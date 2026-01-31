@@ -30,6 +30,7 @@ class SummaryService:
     async def generate_summary(
         self,
         file_id: str,
+        user_id: str,
         text: str,
         summary_type: SummaryType
     ) -> SummaryModel:
@@ -73,6 +74,7 @@ class SummaryService:
             # Create summary model
             summary_model = SummaryModel(
                 summary_id=str(uuid.uuid4()),
+                user_id=user_id,
                 file_id=file_id,
                 summary_type=summary_type,
                 content=summary_text,
@@ -99,10 +101,13 @@ class SummaryService:
             logger.error(f"Summarization failed for file {file_id}: {e}")
             raise ProcessingError(f"Summarization failed: {e}")
 
-    async def get_summaries(self, file_id: str) -> list[SummaryModel]:
+    async def get_summaries(self, file_id: str, user_id: str = None) -> list[SummaryModel]:
         """Get all summaries for a file."""
         db = get_database()
-        cursor = db[COLLECTION_SUMMARIES].find({"file_id": file_id})
+        query = {"file_id": file_id}
+        if user_id:
+            query["user_id"] = user_id
+        cursor = db[COLLECTION_SUMMARIES].find(query)
         summaries = []
 
         async for doc in cursor:

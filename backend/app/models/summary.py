@@ -23,6 +23,7 @@ class SummaryParameters(BaseModel):
 class SummaryModel(BaseModel):
     """Summary document model."""
     summary_id: str
+    user_id: str
     file_id: str
     summary_type: SummaryType
     content: str

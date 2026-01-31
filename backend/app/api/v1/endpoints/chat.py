@@ -1,7 +1,7 @@
 """
 Chat/Q&A endpoints.
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from datetime import datetime
 import uuid
@@ -12,6 +12,8 @@ from app.services.file_service import file_service
 from app.services.langchain_service import langchain_service
 from app.core.database import get_database
 from app.core.constants import COLLECTION_CHAT_HISTORY, MessageRole, ProcessingStatus
+from app.core.auth import get_current_user
+from app.models.user import UserModel
 from app.schemas.chat import ChatRequest, ChatResponse, ChatHistoryResponse, MessageSchema
 from app.models.chat import ChatHistoryModel, Message, MessageMetadata
 from app.utils.exceptions import FileNotFoundError, ProcessingError
@@ -21,16 +23,22 @@ router = APIRouter()
 
 
 @router.post("/{file_id}/ask")
-async def ask_question(file_id: str, request: ChatRequest):
+async def ask_question(
+    file_id: str,
+    request: ChatRequest,
+    current_user: UserModel = Depends(get_current_user)
+):
     """
     Ask a question about an uploaded file with streaming response.
 
     Returns a Server-Sent Events stream of the AI response.
     """
+    user_id = current_user.id
+
     async def generate_stream():
         try:
             # Verify file exists and is processed
-            file_model = await file_service.get_file(file_id)
+            file_model = await file_service.get_file(file_id, user_id)
 
             if file_model.processing_status != ProcessingStatus.COMPLETED:
                 yield f"data: {json.dumps({'error': f'File is still being processed. Status: {file_model.processing_status.value}'})}\n\n"
@@ -40,13 +48,17 @@ async def ask_question(file_id: str, request: ChatRequest):
             db = get_database()
             chat_id = request.chat_id or f"chat-{uuid.uuid4()}"
 
-            chat_history_doc = await db[COLLECTION_CHAT_HISTORY].find_one({"chat_id": chat_id})
+            chat_history_doc = await db[COLLECTION_CHAT_HISTORY].find_one({
+                "chat_id": chat_id,
+                "user_id": user_id
+            })
 
             if chat_history_doc:
                 chat_history_model = ChatHistoryModel.from_dict(chat_history_doc)
             else:
                 chat_history_model = ChatHistoryModel(
                     chat_id=chat_id,
+                    user_id=user_id,
                     file_id=file_id,
                     messages=[],
                     total_messages=0,
@@ -139,13 +151,19 @@ async def ask_question(file_id: str, request: ChatRequest):
 
 
 @router.get("/{file_id}/history", response_model=ChatHistoryResponse)
-async def get_chat_history(file_id: str):
+async def get_chat_history(
+    file_id: str,
+    current_user: UserModel = Depends(get_current_user)
+):
     """
     Get chat history for a file.
     """
     try:
         db = get_database()
-        doc = await db[COLLECTION_CHAT_HISTORY].find_one({"file_id": file_id})
+        doc = await db[COLLECTION_CHAT_HISTORY].find_one({
+            "file_id": file_id,
+            "user_id": current_user.id
+        })
 
         if not doc:
             # Return empty history if none exists

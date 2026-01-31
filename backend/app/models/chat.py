@@ -27,6 +27,7 @@ class Message(BaseModel):
 class ChatHistoryModel(BaseModel):
     """Chat history document model."""
     chat_id: str
+    user_id: str
     file_id: str
     messages: List[Message] = []
     total_messages: int = 0

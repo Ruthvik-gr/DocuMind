@@ -27,6 +27,7 @@ class FileMetadata(BaseModel):
 class FileModel(BaseModel):
     """File document model."""
     file_id: str
+    user_id: str
     filename: str
     file_type: FileType
     file_path: str

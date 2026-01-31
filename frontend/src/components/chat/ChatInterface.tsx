@@ -5,7 +5,6 @@ import { useChat } from '../../hooks/useChat';
 import { Button } from '../common/Button';
 import { Spinner } from '../common/Spinner';
 import { Message, MessageRole } from '../../types/chat.types';
-import { formatRelativeTime } from '../../utils/formatters';
 
 interface ChatInterfaceProps {
   fileId: string;
@@ -60,13 +59,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ fileId }) => {
               </ReactMarkdown>
             </div>
           )}
-          <p
-            className={`text-xs mt-1 ${
-              isUser ? 'text-blue-100' : 'text-gray-500'
-            }`}
-          >
-            {formatRelativeTime(message.timestamp)}
-          </p>
         </div>
       </div>
     );
@@ -76,7 +68,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ fileId }) => {
     <div className="flex flex-col h-[600px] bg-white rounded-lg shadow-md">
       {/* Header */}
       <div className="px-6 py-4 border-b">
-        <h3 className="text-lg font-semibold text-gray-900">Ask Questions</h3>
+        <h3 className="text-lg font-semibold text-gray-900">Ask -Questions</h3>
         <p className="text-sm text-gray-500">Chat about the uploaded content</p>
       </div>
 

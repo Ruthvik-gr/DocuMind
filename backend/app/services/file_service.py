@@ -23,12 +23,13 @@ logger = logging.getLogger(__name__)
 class FileService:
     """Service for file operations."""
 
-    async def upload_file(self, file: UploadFile) -> FileModel:
+    async def upload_file(self, file: UploadFile, user_id: str) -> FileModel:
         """
         Upload and store a file.
 
         Args:
             file: Uploaded file object
+            user_id: ID of the user uploading the file
 
         Returns:
             FileModel with file metadata
@@ -47,6 +48,7 @@ class FileService:
         # Create file model
         file_model = FileModel(
             file_id=file_id,
+            user_id=user_id,
             filename=file.filename,
             file_type=file_type,
             file_path=file_path,
@@ -68,12 +70,13 @@ class FileService:
             file_storage.delete_file(file_path)
             raise DatabaseError(f"Failed to store file metadata: {e}")
 
-    async def get_file(self, file_id: str) -> FileModel:
+    async def get_file(self, file_id: str, user_id: str = None) -> FileModel:
         """
         Get file by ID.
 
         Args:
             file_id: File ID
+            user_id: Optional user ID to filter by ownership
 
         Returns:
             FileModel
@@ -82,7 +85,11 @@ class FileService:
             FileNotFoundError: If file not found
         """
         db = get_database()
-        file_data = await db[COLLECTION_FILES].find_one({"file_id": file_id})
+        query = {"file_id": file_id}
+        if user_id:
+            query["user_id"] = user_id
+
+        file_data = await db[COLLECTION_FILES].find_one(query)
 
         if not file_data:
             raise FileNotFoundError(f"File not found: {file_id}")

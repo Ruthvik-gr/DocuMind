@@ -1,7 +1,7 @@
 """
 Content summarization endpoints.
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from typing import List
 import logging
 
@@ -15,6 +15,8 @@ from app.schemas.summary import (
     SummaryParametersSchema
 )
 from app.core.constants import ProcessingStatus
+from app.core.auth import get_current_user
+from app.models.user import UserModel
 from app.utils.exceptions import FileNotFoundError, ProcessingError
 
 logger = logging.getLogger(__name__)
@@ -22,7 +24,11 @@ router = APIRouter()
 
 
 @router.post("/{file_id}/generate", response_model=SummaryResponse)
-async def generate_summary(file_id: str, request: SummaryRequest):
+async def generate_summary(
+    file_id: str,
+    request: SummaryRequest,
+    current_user: UserModel = Depends(get_current_user)
+):
     """
     Generate a summary for an uploaded file.
 
@@ -30,7 +36,7 @@ async def generate_summary(file_id: str, request: SummaryRequest):
     """
     try:
         # Verify file exists and is processed
-        file_model = await file_service.get_file(file_id)
+        file_model = await file_service.get_file(file_id, current_user.id)
 
         if file_model.processing_status != ProcessingStatus.COMPLETED:
             raise HTTPException(
@@ -47,6 +53,7 @@ async def generate_summary(file_id: str, request: SummaryRequest):
         # Generate summary
         summary_model = await summary_service.generate_summary(
             file_id=file_id,
+            user_id=current_user.id,
             text=file_model.extracted_content.text,
             summary_type=request.summary_type
         )
@@ -79,12 +86,15 @@ async def generate_summary(file_id: str, request: SummaryRequest):
 
 
 @router.get("/{file_id}", response_model=SummaryListResponse)
-async def get_summaries(file_id: str):
+async def get_summaries(
+    file_id: str,
+    current_user: UserModel = Depends(get_current_user)
+):
     """
     Get all summaries for a file.
     """
     try:
-        summaries = await summary_service.get_summaries(file_id)
+        summaries = await summary_service.get_summaries(file_id, current_user.id)
 
         summary_responses = [
             SummaryResponse(

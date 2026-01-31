@@ -32,6 +32,20 @@ class Settings(BaseSettings):
     ALLOWED_AUDIO_MIMETYPES: List[str] = ["audio/mpeg", "audio/wav", "audio/mp3", "audio/x-m4a"]
     ALLOWED_VIDEO_MIMETYPES: List[str] = ["video/mp4", "video/mpeg", "video/quicktime", "video/x-msvideo"]
 
+    # JWT Auth
+    JWT_SECRET_KEY: str = "change-this-secret-key-in-production"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+
+    # Google OAuth
+    GOOGLE_CLIENT_ID: str = ""
+
+    # Cloudinary
+    CLOUDINARY_CLOUD_NAME: str = ""
+    CLOUDINARY_API_KEY: str = ""
+    CLOUDINARY_API_SECRET: str = ""
+
     class Config:
         env_file = ".env"
         case_sensitive = True

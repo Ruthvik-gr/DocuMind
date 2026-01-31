@@ -31,6 +31,7 @@ class TimestampService:
     async def extract_timestamps(
         self,
         file_id: str,
+        user_id: str,
         transcription: str,
         duration: int
     ) -> TimestampModel:
@@ -105,6 +106,7 @@ Guidelines:
             # Create timestamp model
             timestamp_model = TimestampModel(
                 timestamp_id=str(uuid.uuid4()),
+                user_id=user_id,
                 file_id=file_id,
                 timestamps=timestamp_entries,
                 extraction_metadata=ExtractionMetadata(
@@ -125,10 +127,13 @@ Guidelines:
             logger.error(f"Timestamp extraction failed for file {file_id}: {e}")
             raise ProcessingError(f"Timestamp extraction failed: {e}")
 
-    async def get_timestamps(self, file_id: str) -> TimestampModel:
+    async def get_timestamps(self, file_id: str, user_id: str = None) -> TimestampModel:
         """Get timestamps for a file."""
         db = get_database()
-        doc = await db[COLLECTION_TIMESTAMPS].find_one({"file_id": file_id})
+        query = {"file_id": file_id}
+        if user_id:
+            query["user_id"] = user_id
+        doc = await db[COLLECTION_TIMESTAMPS].find_one(query)
 
         if not doc:
             return None

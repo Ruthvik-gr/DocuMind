@@ -1,7 +1,7 @@
 """
 Timestamp extraction endpoints.
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 import logging
 
 from app.services.file_service import file_service
@@ -12,6 +12,8 @@ from app.schemas.timestamp import (
     ExtractionMetadataSchema
 )
 from app.core.constants import FileType, ProcessingStatus
+from app.core.auth import get_current_user
+from app.models.user import UserModel
 from app.utils.exceptions import FileNotFoundError, ProcessingError
 
 logger = logging.getLogger(__name__)
@@ -19,7 +21,10 @@ router = APIRouter()
 
 
 @router.post("/{file_id}/extract", response_model=TimestampResponse)
-async def extract_timestamps(file_id: str):
+async def extract_timestamps(
+    file_id: str,
+    current_user: UserModel = Depends(get_current_user)
+):
     """
     Extract timestamps and topics from an audio/video file.
 
@@ -27,7 +32,7 @@ async def extract_timestamps(file_id: str):
     """
     try:
         # Verify file exists and is processed
-        file_model = await file_service.get_file(file_id)
+        file_model = await file_service.get_file(file_id, current_user.id)
 
         if file_model.processing_status != ProcessingStatus.COMPLETED:
             raise HTTPException(
@@ -53,6 +58,7 @@ async def extract_timestamps(file_id: str):
         # Extract timestamps
         timestamp_model = await timestamp_service.extract_timestamps(
             file_id=file_id,
+            user_id=current_user.id,
             transcription=file_model.extracted_content.text,
             duration=duration
         )
@@ -93,12 +99,15 @@ async def extract_timestamps(file_id: str):
 
 
 @router.get("/{file_id}", response_model=TimestampResponse)
-async def get_timestamps(file_id: str):
+async def get_timestamps(
+    file_id: str,
+    current_user: UserModel = Depends(get_current_user)
+):
     """
     Get extracted timestamps for a file.
     """
     try:
-        timestamp_model = await timestamp_service.get_timestamps(file_id)
+        timestamp_model = await timestamp_service.get_timestamps(file_id, current_user.id)
 
         if not timestamp_model:
             raise HTTPException(

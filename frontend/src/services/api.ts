@@ -12,10 +12,13 @@ const api: AxiosInstance = axios.create({
   timeout: 30000, // 30 seconds
 });
 
-// Request interceptor
+// Request interceptor - add auth token
 api.interceptors.request.use(
   (config) => {
-    // Add any auth tokens here if needed
+    const token = localStorage.getItem('access_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
     return config;
   },
   (error) => {
@@ -30,7 +33,15 @@ api.interceptors.response.use(
   },
   (error: AxiosError) => {
     if (error.response) {
-      // Server responded with error status
+      // Handle 401 Unauthorized - redirect to login
+      if (error.response.status === 401) {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        // Only redirect if not already on login page
+        if (!window.location.pathname.includes('/login')) {
+          window.location.href = '/login';
+        }
+      }
       console.error('API Error:', error.response.data);
     } else if (error.request) {
       // Request made but no response

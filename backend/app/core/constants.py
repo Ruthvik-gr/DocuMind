@@ -32,7 +32,14 @@ class SummaryType(str, Enum):
     KEY_POINTS = "key_points"
 
 
+class AuthProvider(str, Enum):
+    """Authentication provider enumeration."""
+    LOCAL = "local"
+    GOOGLE = "google"
+
+
 # Collection names
+COLLECTION_USERS = "users"
 COLLECTION_FILES = "files"
 COLLECTION_SUMMARIES = "summaries"
 COLLECTION_TIMESTAMPS = "timestamps"

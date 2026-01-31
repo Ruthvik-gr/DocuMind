@@ -13,6 +13,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@react-oauth/google": "^0.12.1",
     "@tailwindcss/typography": "^0.5.19",
     "axios": "^1.6.5",
     "react": "^18.3.1",

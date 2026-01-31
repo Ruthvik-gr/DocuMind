@@ -26,6 +26,7 @@ class ExtractionMetadata(BaseModel):
 class TimestampModel(BaseModel):
     """Timestamp document model."""
     timestamp_id: str
+    user_id: str
     file_id: str
     timestamps: List[TimestampEntry]
     extraction_metadata: ExtractionMetadata

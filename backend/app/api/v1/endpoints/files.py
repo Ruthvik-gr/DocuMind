@@ -1,7 +1,7 @@
 """
 File management endpoints.
 """
-from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks, Depends
 from fastapi.responses import FileResponse
 from typing import List
 import logging
@@ -13,6 +13,8 @@ from app.services.transcription_service import transcription_service
 from app.services.langchain_service import langchain_service
 from app.schemas.file import FileUploadResponse, FileDetailResponse
 from app.core.constants import FileType, ProcessingStatus
+from app.core.auth import get_current_user
+from app.models.user import UserModel
 from app.utils.exceptions import (
     InvalidFileError,
     FileNotFoundError,
@@ -68,7 +70,8 @@ async def process_file_background(file_id: str, file_path: str, file_type: FileT
 @router.post("/upload", response_model=FileUploadResponse)
 async def upload_file(
     background_tasks: BackgroundTasks,
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    current_user: UserModel = Depends(get_current_user)
 ):
     """
     Upload a PDF, audio, or video file.
@@ -77,7 +80,7 @@ async def upload_file(
     """
     try:
         # Upload and save file
-        file_model = await file_service.upload_file(file)
+        file_model = await file_service.upload_file(file, current_user.id)
 
         # Add background task for processing
         background_tasks.add_task(
@@ -104,12 +107,12 @@ async def upload_file(
 
 
 @router.get("/{file_id}", response_model=FileDetailResponse)
-async def get_file(file_id: str):
+async def get_file(file_id: str, current_user: UserModel = Depends(get_current_user)):
     """
     Get file details including extracted content.
     """
     try:
-        file_model = await file_service.get_file(file_id)
+        file_model = await file_service.get_file(file_id, current_user.id)
 
         # Convert nested models to dicts for schema compatibility
         extracted_content_dict = None
@@ -143,12 +146,12 @@ async def get_file(file_id: str):
 
 
 @router.get("/{file_id}/stream")
-async def stream_file(file_id: str):
+async def stream_file(file_id: str, current_user: UserModel = Depends(get_current_user)):
     """
     Stream a file for media playback.
     """
     try:
-        file_model = await file_service.get_file(file_id)
+        file_model = await file_service.get_file(file_id, current_user.id)
 
         if not os.path.exists(file_model.file_path):
             raise HTTPException(status_code=404, detail="File not found on disk")
