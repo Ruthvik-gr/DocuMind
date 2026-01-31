@@ -1,9 +1,11 @@
 """
 File management endpoints.
 """
-from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks, Depends
-from fastapi.responses import FileResponse
-from typing import List
+from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks, Depends, Query
+from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from typing import List, Optional
+from bson import ObjectId
 import logging
 import os
 
@@ -11,9 +13,11 @@ from app.services.file_service import file_service
 from app.services.pdf_service import pdf_service
 from app.services.transcription_service import transcription_service
 from app.services.langchain_service import langchain_service
-from app.schemas.file import FileUploadResponse, FileDetailResponse
-from app.core.constants import FileType, ProcessingStatus
-from app.core.auth import get_current_user
+from app.services.cloudinary_service import cloudinary_service
+from app.schemas.file import FileUploadResponse, FileDetailResponse, FileListItem, FileListResponse
+from app.core.constants import FileType, ProcessingStatus, COLLECTION_CHAT_HISTORY, COLLECTION_USERS
+from app.core.database import get_database
+from app.core.auth import get_current_user, decode_token
 from app.models.user import UserModel
 from app.utils.exceptions import (
     InvalidFileError,
@@ -21,11 +25,13 @@ from app.utils.exceptions import (
     ProcessingError
 )
 
+security = HTTPBearer(auto_error=False)
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-async def process_file_background(file_id: str, file_path: str, file_type: FileType):
+async def process_file_background(file_id: str, file_path: str, file_type: FileType, filename: str):
     """Background task to process uploaded file."""
     try:
         await file_service.update_processing_status(file_id, ProcessingStatus.PROCESSING)
@@ -55,6 +61,20 @@ async def process_file_background(file_id: str, file_path: str, file_type: FileT
                 metadata={"file_id": file_id, "file_type": file_type.value}
             )
 
+        # Upload to Cloudinary if configured
+        if cloudinary_service.is_configured():
+            try:
+                cloudinary_info = await cloudinary_service.upload_file(
+                    file_path=file_path,
+                    file_id=file_id,
+                    file_type=file_type,
+                    original_filename=filename
+                )
+                await file_service.update_cloudinary_info(file_id, cloudinary_info)
+                logger.info(f"File uploaded to Cloudinary: {file_id}")
+            except Exception as cloud_error:
+                logger.warning(f"Failed to upload to Cloudinary, using local storage: {cloud_error}")
+
         await file_service.update_processing_status(file_id, ProcessingStatus.COMPLETED)
         logger.info(f"Successfully processed file {file_id}")
 
@@ -65,6 +85,41 @@ async def process_file_background(file_id: str, file_path: str, file_type: FileT
             ProcessingStatus.FAILED,
             error=str(e)
         )
+
+
+@router.get("/", response_model=FileListResponse)
+async def list_files(current_user: UserModel = Depends(get_current_user)):
+    """
+    List all files for the current user.
+    """
+    try:
+        files = await file_service.list_files(current_user.id)
+        db = get_database()
+
+        # Check which files have chat history
+        file_items = []
+        for file_model in files:
+            chat_exists = await db[COLLECTION_CHAT_HISTORY].find_one(
+                {"file_id": file_model.file_id, "user_id": current_user.id}
+            )
+            file_items.append(FileListItem(
+                file_id=file_model.file_id,
+                filename=file_model.filename,
+                file_type=file_model.file_type,
+                file_size=file_model.file_size,
+                processing_status=file_model.processing_status,
+                created_at=file_model.created_at,
+                has_chat=chat_exists is not None
+            ))
+
+        return FileListResponse(
+            files=file_items,
+            total=len(file_items)
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to list files: {e}")
+        raise HTTPException(status_code=500, detail="Failed to list files")
 
 
 @router.post("/upload", response_model=FileUploadResponse)
@@ -87,7 +142,8 @@ async def upload_file(
             process_file_background,
             file_model.file_id,
             file_model.file_path,
-            file_model.file_type
+            file_model.file_type,
+            file_model.filename
         )
 
         return FileUploadResponse(
@@ -146,13 +202,41 @@ async def get_file(file_id: str, current_user: UserModel = Depends(get_current_u
 
 
 @router.get("/{file_id}/stream")
-async def stream_file(file_id: str, current_user: UserModel = Depends(get_current_user)):
+async def stream_file(
+    file_id: str,
+    token: Optional[str] = Query(None, description="JWT token for authentication"),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
+):
     """
     Stream a file for media playback.
+    Accepts authentication via Bearer token header OR token query parameter.
+    Redirects to Cloudinary URL if available, otherwise serves from local storage.
     """
-    try:
-        file_model = await file_service.get_file(file_id, current_user.id)
+    # Get token from either query param or header
+    auth_token = token
+    if not auth_token and credentials:
+        auth_token = credentials.credentials
 
+    if not auth_token:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    # Decode and validate token
+    payload = decode_token(auth_token)
+    if not payload or payload.get("type") != "access":
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    try:
+        file_model = await file_service.get_file(file_id, user_id)
+
+        # If file is on Cloudinary, redirect to Cloudinary URL
+        if file_model.cloudinary_url:
+            return RedirectResponse(url=file_model.cloudinary_url)
+
+        # Otherwise serve from local storage
         if not os.path.exists(file_model.file_path):
             raise HTTPException(status_code=404, detail="File not found on disk")
 
@@ -167,3 +251,19 @@ async def stream_file(file_id: str, current_user: UserModel = Depends(get_curren
     except Exception as e:
         logger.error(f"Failed to stream file {file_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to stream file")
+
+
+@router.delete("/{file_id}")
+async def delete_file(file_id: str, current_user: UserModel = Depends(get_current_user)):
+    """
+    Delete a file.
+    """
+    try:
+        await file_service.delete_file(file_id, current_user.id)
+        return {"message": "File deleted successfully"}
+
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"File not found: {file_id}")
+    except Exception as e:
+        logger.error(f"Failed to delete file {file_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete file")

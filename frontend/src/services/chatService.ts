@@ -23,13 +23,20 @@ export const chatService = {
   askQuestionStreaming: async (
     fileId: string,
     request: ChatRequest,
-    onChunk: (chunk: string) => void
-  ): Promise<void> => {
+    onChunk: (chunk: string) => void,
+    onComplete?: (suggestedTimestamp?: number) => void
+  ): Promise<{ suggested_timestamp?: number }> => {
+    const token = localStorage.getItem('access_token');
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
     const response = await fetch(`${API_BASE_URL}/chat/${fileId}/ask`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify(request),
     });
 
@@ -44,6 +51,7 @@ export const chatService = {
 
     const decoder = new TextDecoder();
     let buffer = '';
+    let suggestedTimestamp: number | undefined;
 
     try {
       while (true) {
@@ -72,8 +80,15 @@ export const chatService = {
                   onChunk(data.content);
                 } else if (data.type === 'error') {
                   throw new Error(data.error || 'Streaming error occurred');
+                } else if (data.type === 'done') {
+                  // Capture suggested_timestamp from done event
+                  if (data.suggested_timestamp !== undefined) {
+                    suggestedTimestamp = data.suggested_timestamp;
+                  }
+                  if (onComplete) {
+                    onComplete(suggestedTimestamp);
+                  }
                 }
-                // Handle 'start' and 'done' events silently
               } catch (parseError) {
                 console.error('Error parsing SSE data:', parseError);
               }
@@ -84,6 +99,8 @@ export const chatService = {
     } finally {
       reader.releaseLock();
     }
+
+    return { suggested_timestamp: suggestedTimestamp };
   },
 
   /**

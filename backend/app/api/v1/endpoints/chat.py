@@ -11,7 +11,8 @@ import json
 from app.services.file_service import file_service
 from app.services.langchain_service import langchain_service
 from app.core.database import get_database
-from app.core.constants import COLLECTION_CHAT_HISTORY, MessageRole, ProcessingStatus
+from app.core.constants import COLLECTION_CHAT_HISTORY, COLLECTION_TIMESTAMPS, MessageRole, ProcessingStatus, FileType
+from app.utils.timestamp_matcher import find_relevant_timestamp
 from app.core.auth import get_current_user
 from app.models.user import UserModel
 from app.schemas.chat import ChatRequest, ChatResponse, ChatHistoryResponse, MessageSchema
@@ -129,8 +130,30 @@ async def ask_question(
                 upsert=True
             )
 
-            # Send completion event
-            yield f"data: {json.dumps({'type': 'done', 'sources': source_documents})}\n\n"
+            # Find suggested timestamp for audio/video files
+            suggested_timestamp = None
+            if file_model.file_type in [FileType.AUDIO, FileType.VIDEO]:
+                # Get timestamps for this file
+                timestamps_doc = await db[COLLECTION_TIMESTAMPS].find_one({
+                    "file_id": file_id
+                })
+                if timestamps_doc and timestamps_doc.get("timestamps"):
+                    timestamps_list = timestamps_doc["timestamps"]
+                    suggested_timestamp = find_relevant_timestamp(
+                        answer=full_answer,
+                        source_chunks=source_documents,
+                        timestamps=timestamps_list
+                    )
+
+            # Send completion event with suggested timestamp
+            completion_data = {
+                'type': 'done',
+                'sources': source_documents
+            }
+            if suggested_timestamp is not None:
+                completion_data['suggested_timestamp'] = suggested_timestamp
+
+            yield f"data: {json.dumps(completion_data)}\n\n"
 
         except FileNotFoundError:
             yield f"data: {json.dumps({'error': f'File not found: {file_id}'})}\n\n"

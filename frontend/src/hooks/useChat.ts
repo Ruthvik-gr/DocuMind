@@ -10,11 +10,13 @@ export const useChat = (fileId: string) => {
   const [chatHistory, setChatHistory] = useState<ChatHistoryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [streamingMessage, setStreamingMessage] = useState<string>('');
+  const [lastSuggestedTimestamp, setLastSuggestedTimestamp] = useState<number | undefined>();
 
   const askQuestion = async (question: string): Promise<ChatResponse | null> => {
     setIsLoading(true);
     setError(null);
     setStreamingMessage('');
+    setLastSuggestedTimestamp(undefined);
 
     try {
       // Add user message immediately to chat history
@@ -39,8 +41,9 @@ export const useChat = (fileId: string) => {
 
       // Use streaming service
       let fullAnswer = '';
+      let suggestedTs: number | undefined;
 
-      await chatService.askQuestionStreaming(
+      const result = await chatService.askQuestionStreaming(
         fileId,
         {
           question,
@@ -49,11 +52,32 @@ export const useChat = (fileId: string) => {
         (chunk) => {
           fullAnswer += chunk;
           setStreamingMessage(fullAnswer);
+        },
+        (timestamp) => {
+          suggestedTs = timestamp;
+          setLastSuggestedTimestamp(timestamp);
         }
       );
 
+      // If we got a suggested timestamp from the result
+      if (result.suggested_timestamp !== undefined) {
+        suggestedTs = result.suggested_timestamp;
+        setLastSuggestedTimestamp(result.suggested_timestamp);
+      }
+
       // Refresh chat history after streaming completes
-      await loadHistory();
+      // and add the suggested timestamp to the last assistant message
+      const history = await chatService.getHistory(fileId);
+
+      // Add suggested_timestamp to the last assistant message
+      if (suggestedTs !== undefined && history.messages.length > 0) {
+        const lastMessage = history.messages[history.messages.length - 1];
+        if (lastMessage.role === MessageRole.ASSISTANT) {
+          lastMessage.suggested_timestamp = suggestedTs;
+        }
+      }
+
+      setChatHistory(history);
       setStreamingMessage('');
 
       return null;
@@ -83,5 +107,6 @@ export const useChat = (fileId: string) => {
     chatHistory,
     error,
     streamingMessage,
+    lastSuggestedTimestamp,
   };
 };

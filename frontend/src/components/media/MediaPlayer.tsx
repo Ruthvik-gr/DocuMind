@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { useMediaPlayer } from '../../hooks/useMediaPlayer';
+import { useMediaPlayerOptional } from '../../contexts/MediaPlayerContext';
 import { FileType } from '../../types/file.types';
 import { TimestampEntry } from '../../types/timestamp.types';
 import { formatTime } from '../../utils/formatters';
@@ -22,6 +23,20 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({ fileUrl, fileType, tim
     activeTimestampIndex,
     setActiveTimestampIndex,
   } = useMediaPlayer();
+
+  // Register media element with context for cross-component access
+  const mediaPlayerContext = useMediaPlayerOptional();
+
+  useEffect(() => {
+    if (mediaPlayerContext && mediaRef.current) {
+      mediaPlayerContext.registerMediaElement(mediaRef.current);
+    }
+    return () => {
+      if (mediaPlayerContext) {
+        mediaPlayerContext.registerMediaElement(null);
+      }
+    };
+  }, [mediaPlayerContext, mediaRef]);
 
   // Update active timestamp based on current time
   useEffect(() => {

@@ -2,18 +2,22 @@ import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useChat } from '../../hooks/useChat';
+import { useMediaPlayerOptional } from '../../contexts/MediaPlayerContext';
 import { Button } from '../common/Button';
 import { Spinner } from '../common/Spinner';
 import { Message, MessageRole } from '../../types/chat.types';
+import { formatTime } from '../../utils/formatters';
 
 interface ChatInterfaceProps {
   fileId: string;
+  isMediaFile?: boolean;
 }
 
-export const ChatInterface: React.FC<ChatInterfaceProps> = ({ fileId }) => {
+export const ChatInterface: React.FC<ChatInterfaceProps> = ({ fileId, isMediaFile = false }) => {
   const [question, setQuestion] = useState('');
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const { askQuestion, loadHistory, isLoading, chatHistory, error, streamingMessage } = useChat(fileId);
+  const { askQuestion, loadHistory, isLoading, chatHistory, error, streamingMessage, lastSuggestedTimestamp } = useChat(fileId);
+  const mediaPlayerContext = useMediaPlayerOptional();
 
   useEffect(() => {
     loadHistory();
@@ -35,8 +39,15 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ fileId }) => {
     await askQuestion(currentQuestion);
   };
 
-  const renderMessage = (message: Message) => {
+  const handlePlayFromTimestamp = (seconds: number) => {
+    if (mediaPlayerContext) {
+      mediaPlayerContext.seekToTime(seconds);
+    }
+  };
+
+  const renderMessage = (message: Message, isLast: boolean = false) => {
     const isUser = message.role === MessageRole.USER;
+    const suggestedTimestamp = message.suggested_timestamp ?? (isLast && !isUser ? lastSuggestedTimestamp : undefined);
 
     return (
       <div
@@ -53,11 +64,24 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ fileId }) => {
           {isUser ? (
             <p className="text-sm whitespace-pre-wrap">{message.content}</p>
           ) : (
-            <div className="prose prose-sm max-w-none prose-headings:font-semibold prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-strong:font-semibold">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {message.content}
-              </ReactMarkdown>
-            </div>
+            <>
+              <div className="prose prose-sm max-w-none prose-headings:font-semibold prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-strong:font-semibold">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {message.content}
+                </ReactMarkdown>
+              </div>
+              {isMediaFile && suggestedTimestamp !== undefined && mediaPlayerContext && (
+                <button
+                  onClick={() => handlePlayFromTimestamp(suggestedTimestamp)}
+                  className="mt-2 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-full transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                  </svg>
+                  Play from {formatTime(suggestedTimestamp)}
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -68,7 +92,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ fileId }) => {
     <div className="flex flex-col h-[600px] bg-white rounded-lg shadow-md">
       {/* Header */}
       <div className="px-6 py-4 border-b">
-        <h3 className="text-lg font-semibold text-gray-900">Ask -Questions</h3>
+        <h3 className="text-lg font-semibold text-gray-900">Ask Questions</h3>
         <p className="text-sm text-gray-500">Chat about the uploaded content</p>
       </div>
 
@@ -80,7 +104,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ fileId }) => {
           </div>
         ) : (
           <div>
-            {chatHistory?.messages.map(renderMessage)}
+            {chatHistory?.messages.map((msg, idx) =>
+              renderMessage(msg, idx === (chatHistory?.messages.length || 0) - 1)
+            )}
             {streamingMessage && (
               <div className="flex justify-start mb-4">
                 <div className="max-w-[70%] rounded-lg px-4 py-2 bg-gray-100 text-gray-900">

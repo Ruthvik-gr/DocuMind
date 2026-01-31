@@ -32,6 +32,7 @@ export interface Message {
   timestamp: string;
   token_count?: number;
   metadata?: MessageMetadata;
+  suggested_timestamp?: number;
 }
 
 export interface ChatHistoryResponse {

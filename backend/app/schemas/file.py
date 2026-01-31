@@ -2,7 +2,7 @@
 Pydantic schemas for file-related endpoints.
 """
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 from uuid import UUID
 from app.core.constants import FileType, ProcessingStatus
@@ -82,5 +82,53 @@ class FileDetailResponse(BaseModel):
                 "upload_date": "2026-01-29T10:00:00",
                 "created_at": "2026-01-29T10:00:00",
                 "updated_at": "2026-01-29T10:05:00"
+            }
+        }
+
+
+class FileListItem(BaseModel):
+    """Schema for file list item."""
+    file_id: str
+    filename: str
+    file_type: FileType
+    file_size: int
+    processing_status: ProcessingStatus
+    created_at: datetime
+    has_chat: bool = False
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "file_id": "123e4567-e89b-12d3-a456-426614174000",
+                "filename": "document.pdf",
+                "file_type": "pdf",
+                "file_size": 1048576,
+                "processing_status": "completed",
+                "created_at": "2026-01-29T10:00:00",
+                "has_chat": True
+            }
+        }
+
+
+class FileListResponse(BaseModel):
+    """Response schema for file list."""
+    files: List[FileListItem]
+    total: int
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "files": [
+                    {
+                        "file_id": "123e4567-e89b-12d3-a456-426614174000",
+                        "filename": "document.pdf",
+                        "file_type": "pdf",
+                        "file_size": 1048576,
+                        "processing_status": "completed",
+                        "created_at": "2026-01-29T10:00:00",
+                        "has_chat": True
+                    }
+                ],
+                "total": 1
             }
         }

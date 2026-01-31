@@ -54,3 +54,18 @@ export interface FileDetailResponse {
   updated_at: string;
   file_url?: string;
 }
+
+export interface FileListItem {
+  file_id: string;
+  filename: string;
+  file_type: FileType;
+  file_size: number;
+  processing_status: ProcessingStatus;
+  created_at: string;
+  has_chat: boolean;
+}
+
+export interface FileListResponse {
+  files: FileListItem[];
+  total: number;
+}

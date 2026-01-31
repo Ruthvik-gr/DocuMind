@@ -38,6 +38,10 @@ class FileModel(BaseModel):
     processing_error: Optional[str] = None
     extracted_content: Optional[ExtractedContent] = None
     metadata: Optional[FileMetadata] = None
+    # Cloudinary fields
+    cloudinary_url: Optional[str] = None
+    cloudinary_public_id: Optional[str] = None
+    cloudinary_resource_type: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
