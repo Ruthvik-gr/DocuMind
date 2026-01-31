@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useChat } from '../../hooks/useChat';
 import { Button } from '../common/Button';
 import { Spinner } from '../common/Spinner';
@@ -11,17 +13,19 @@ interface ChatInterfaceProps {
 
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({ fileId }) => {
   const [question, setQuestion] = useState('');
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { askQuestion, loadHistory, isLoading, chatHistory, error } = useChat(fileId);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const { askQuestion, loadHistory, isLoading, chatHistory, error, streamingMessage } = useChat(fileId);
 
   useEffect(() => {
     loadHistory();
   }, [fileId]);
 
   useEffect(() => {
-    // Scroll to bottom when new messages arrive
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatHistory]);
+    // Scroll to bottom of messages container only (not parent)
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+    }
+  }, [chatHistory, streamingMessage]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,7 +51,15 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ fileId }) => {
               : 'bg-gray-100 text-gray-900'
           }`}
         >
-          <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+          {isUser ? (
+            <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+          ) : (
+            <div className="prose prose-sm max-w-none prose-headings:font-semibold prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-strong:font-semibold">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {message.content}
+              </ReactMarkdown>
+            </div>
+          )}
           <p
             className={`text-xs mt-1 ${
               isUser ? 'text-blue-100' : 'text-gray-500'
@@ -69,7 +81,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ fileId }) => {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-6 py-4">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-6 py-4">
         {chatHistory?.messages.length === 0 ? (
           <div className="flex items-center justify-center h-full text-gray-500">
             <p>Ask a question to start the conversation</p>
@@ -77,14 +89,24 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ fileId }) => {
         ) : (
           <div>
             {chatHistory?.messages.map(renderMessage)}
-            {isLoading && (
+            {streamingMessage && (
+              <div className="flex justify-start mb-4">
+                <div className="max-w-[70%] rounded-lg px-4 py-2 bg-gray-100 text-gray-900">
+                  <div className="prose prose-sm max-w-none prose-headings:font-semibold prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-strong:font-semibold">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {streamingMessage}
+                    </ReactMarkdown>
+                  </div>
+                </div>
+              </div>
+            )}
+            {isLoading && !streamingMessage && (
               <div className="flex justify-start mb-4">
                 <div className="bg-gray-100 rounded-lg px-4 py-2">
                   <Spinner size="sm" />
                 </div>
               </div>
             )}
-            <div ref={messagesEndRef} />
           </div>
         )}
 

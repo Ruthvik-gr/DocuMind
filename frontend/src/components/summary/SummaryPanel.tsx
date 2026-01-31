@@ -1,4 +1,6 @@
 import React, { useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useSummary } from '../../hooks/useSummary';
 import { Button } from '../common/Button';
 import { Card } from '../common/Card';
@@ -86,7 +88,11 @@ export const SummaryPanel: React.FC<SummaryPanelProps> = ({ fileId }) => {
                   {new Date(summary.created_at).toLocaleString()}
                 </span>
               </div>
-              <p className="text-gray-700 whitespace-pre-wrap">{summary.content}</p>
+              <div className="prose prose-sm max-w-none prose-headings:font-semibold prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-strong:font-semibold text-gray-700">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {summary.content}
+                </ReactMarkdown>
+              </div>
               <div className="mt-3 pt-3 border-t text-xs text-gray-500">
                 <span>Model: {summary.model_used}</span>
                 <span className="ml-4">Tokens: {summary.token_count.total}</span>

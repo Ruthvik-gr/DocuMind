@@ -2,9 +2,11 @@
 Chat/Q&A endpoints.
 """
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from datetime import datetime
 import uuid
 import logging
+import json
 
 from app.services.file_service import file_service
 from app.services.langchain_service import langchain_service
@@ -18,107 +20,122 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/{file_id}/ask", response_model=ChatResponse)
+@router.post("/{file_id}/ask")
 async def ask_question(file_id: str, request: ChatRequest):
     """
-    Ask a question about an uploaded file.
+    Ask a question about an uploaded file with streaming response.
 
-    The system will use the file's extracted content to provide an answer.
+    Returns a Server-Sent Events stream of the AI response.
     """
-    try:
-        # Verify file exists and is processed
-        file_model = await file_service.get_file(file_id)
+    async def generate_stream():
+        try:
+            # Verify file exists and is processed
+            file_model = await file_service.get_file(file_id)
 
-        if file_model.processing_status != ProcessingStatus.COMPLETED:
-            raise HTTPException(
-                status_code=400,
-                detail=f"File is still being processed. Status: {file_model.processing_status.value}"
-            )
+            if file_model.processing_status != ProcessingStatus.COMPLETED:
+                yield f"data: {json.dumps({'error': f'File is still being processed. Status: {file_model.processing_status.value}'})}\n\n"
+                return
 
-        # Get or create chat history
-        db = get_database()
-        chat_id = request.chat_id or f"chat-{uuid.uuid4()}"
+            # Get or create chat history
+            db = get_database()
+            chat_id = request.chat_id or f"chat-{uuid.uuid4()}"
 
-        chat_history_doc = await db[COLLECTION_CHAT_HISTORY].find_one({"chat_id": chat_id})
+            chat_history_doc = await db[COLLECTION_CHAT_HISTORY].find_one({"chat_id": chat_id})
 
-        if chat_history_doc:
-            chat_history_model = ChatHistoryModel.from_dict(chat_history_doc)
-        else:
-            chat_history_model = ChatHistoryModel(
-                chat_id=chat_id,
+            if chat_history_doc:
+                chat_history_model = ChatHistoryModel.from_dict(chat_history_doc)
+            else:
+                chat_history_model = ChatHistoryModel(
+                    chat_id=chat_id,
+                    file_id=file_id,
+                    messages=[],
+                    total_messages=0,
+                    total_tokens=0
+                )
+
+            # Convert previous messages to format expected by LangChain
+            formatted_history = []
+            for msg in chat_history_model.messages:
+                if msg.role == MessageRole.USER:
+                    formatted_history.append((msg.content, ""))
+                elif msg.role == MessageRole.ASSISTANT and formatted_history:
+                    formatted_history[-1] = (formatted_history[-1][0], msg.content)
+
+            # Send chat_id first
+            yield f"data: {json.dumps({'chat_id': chat_id, 'type': 'start'})}\n\n"
+
+            # Stream answer using LangChain streaming
+            full_answer = ""
+            source_documents = []
+
+            async for chunk in langchain_service.ask_question_stream(
                 file_id=file_id,
-                messages=[],
-                total_messages=0,
-                total_tokens=0
+                question=request.question,
+                chat_history=formatted_history
+            ):
+                if chunk["type"] == "content":
+                    full_answer += chunk["data"]
+                    yield f"data: {json.dumps({'content': chunk['data'], 'type': 'content'})}\n\n"
+                elif chunk["type"] == "sources":
+                    source_documents = chunk["data"]
+
+            # Create user message
+            user_message = Message(
+                message_id=f"msg-{uuid.uuid4()}",
+                role=MessageRole.USER,
+                content=request.question,
+                timestamp=datetime.utcnow(),
+                token_count=len(request.question.split())
             )
 
-        # Convert previous messages to format expected by LangChain
-        formatted_history = []
-        for msg in chat_history_model.messages:
-            if msg.role == MessageRole.USER:
-                formatted_history.append((msg.content, ""))
-            elif msg.role == MessageRole.ASSISTANT and formatted_history:
-                formatted_history[-1] = (formatted_history[-1][0], msg.content)
-
-        # Ask question using LangChain
-        result = await langchain_service.ask_question(
-            file_id=file_id,
-            question=request.question,
-            chat_history=formatted_history
-        )
-
-        # Create user message
-        user_message = Message(
-            message_id=f"msg-{uuid.uuid4()}",
-            role=MessageRole.USER,
-            content=request.question,
-            timestamp=datetime.utcnow(),
-            token_count=len(request.question.split())  # Rough estimate
-        )
-
-        # Create assistant message
-        assistant_message = Message(
-            message_id=f"msg-{uuid.uuid4()}",
-            role=MessageRole.ASSISTANT,
-            content=result["answer"],
-            timestamp=datetime.utcnow(),
-            token_count=len(result["answer"].split()),  # Rough estimate
-            metadata=MessageMetadata(
-                source_chunks=result["source_documents"],
-                model=None,
-                confidence=None
+            # Create assistant message
+            assistant_message = Message(
+                message_id=f"msg-{uuid.uuid4()}",
+                role=MessageRole.ASSISTANT,
+                content=full_answer,
+                timestamp=datetime.utcnow(),
+                token_count=len(full_answer.split()),
+                metadata=MessageMetadata(
+                    source_chunks=source_documents,
+                    model=None,
+                    confidence=None
+                )
             )
-        )
 
-        # Update chat history
-        chat_history_model.messages.extend([user_message, assistant_message])
-        chat_history_model.total_messages = len(chat_history_model.messages)
-        chat_history_model.total_tokens += (
-            user_message.token_count + assistant_message.token_count
-        )
-        chat_history_model.updated_at = datetime.utcnow()
+            # Update chat history
+            chat_history_model.messages.extend([user_message, assistant_message])
+            chat_history_model.total_messages = len(chat_history_model.messages)
+            chat_history_model.total_tokens += (
+                user_message.token_count + assistant_message.token_count
+            )
+            chat_history_model.updated_at = datetime.utcnow()
 
-        # Save to database
-        await db[COLLECTION_CHAT_HISTORY].update_one(
-            {"chat_id": chat_id},
-            {"$set": chat_history_model.to_dict()},
-            upsert=True
-        )
+            # Save to database
+            await db[COLLECTION_CHAT_HISTORY].update_one(
+                {"chat_id": chat_id},
+                {"$set": chat_history_model.to_dict()},
+                upsert=True
+            )
 
-        return ChatResponse(
-            answer=result["answer"],
-            chat_id=chat_id,
-            sources=result["source_documents"],
-            timestamp=datetime.utcnow()
-        )
+            # Send completion event
+            yield f"data: {json.dumps({'type': 'done', 'sources': source_documents})}\n\n"
 
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=f"File not found: {file_id}")
-    except ProcessingError as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    except Exception as e:
-        logger.error(f"Q&A failed for file {file_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to process question")
+        except FileNotFoundError:
+            yield f"data: {json.dumps({'error': f'File not found: {file_id}'})}\n\n"
+        except ProcessingError as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        except Exception as e:
+            logger.error(f"Q&A streaming failed for file {file_id}: {e}")
+            yield f"data: {json.dumps({'error': 'Failed to process question'})}\n\n"
+
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
+    )
 
 
 @router.get("/{file_id}/history", response_model=ChatHistoryResponse)

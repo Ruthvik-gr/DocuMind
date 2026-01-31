@@ -1,5 +1,5 @@
 """
-MongoDB database connection and management.
+MongoDB Atlas database connection and management.
 """
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from pymongo.errors import ConnectionFailure
@@ -11,7 +11,7 @@ settings = get_settings()
 
 
 class Database:
-    """Database connection manager."""
+    """Database connection manager for MongoDB Atlas."""
 
     client: AsyncIOMotorClient = None
     database: AsyncIOMotorDatabase = None
@@ -21,14 +21,14 @@ db = Database()
 
 
 async def connect_to_mongo():
-    """Connect to MongoDB."""
+    """Connect to MongoDB Atlas."""
     try:
         db.client = AsyncIOMotorClient(settings.MONGODB_URL)
         await db.client.admin.command('ping')
         db.database = db.client[settings.MONGODB_DATABASE]
-        logger.info(f"Connected to MongoDB database: {settings.MONGODB_DATABASE}")
+        logger.info(f"Connected to MongoDB Atlas database: {settings.MONGODB_DATABASE}")
     except ConnectionFailure as e:
-        logger.error(f"Failed to connect to MongoDB: {e}")
+        logger.error(f"Failed to connect to MongoDB Atlas: {e}")
         raise
 
 

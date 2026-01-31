@@ -8,7 +8,7 @@ from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, AsyncGenerator
 import logging
 
 from app.config import get_settings
@@ -166,6 +166,64 @@ Context:
 
         except Exception as e:
             logger.error(f"Q&A failed for file {file_id}: {e}")
+            raise ProcessingError(f"Q&A failed: {e}")
+
+    async def ask_question_stream(
+        self,
+        file_id: str,
+        question: str,
+        chat_history: List[tuple] = None
+    ) -> AsyncGenerator[Dict[str, any], None]:
+        """
+        Ask a question with streaming response.
+
+        Args:
+            file_id: File ID
+            question: User question
+            chat_history: Previous chat history
+
+        Yields:
+            Dicts with 'type' (content/sources) and 'data'
+        """
+        vector_store = self.get_vector_store(file_id)
+        if not vector_store:
+            raise ProcessingError(f"No vector store found for file {file_id}")
+
+        try:
+            # Get retriever
+            retriever = vector_store.as_retriever(
+                search_type="similarity",
+                search_kwargs={"k": 4}
+            )
+
+            # Get relevant documents
+            docs = await retriever.ainvoke(question)
+            context = self._format_docs(docs)
+
+            # Format chat history
+            formatted_history = []
+            if chat_history:
+                for q, a in chat_history:
+                    formatted_history.append(("human", q))
+                    formatted_history.append(("assistant", a))
+
+            # Create chain
+            chain = self.qa_prompt | self.llm
+
+            # Stream the response
+            async for chunk in chain.astream({
+                "context": context,
+                "question": question,
+                "chat_history": formatted_history
+            }):
+                if hasattr(chunk, 'content') and chunk.content:
+                    yield {"type": "content", "data": chunk.content}
+
+            # Yield sources at the end
+            yield {"type": "sources", "data": [doc.page_content for doc in docs]}
+
+        except Exception as e:
+            logger.error(f"Streaming Q&A failed for file {file_id}: {e}")
             raise ProcessingError(f"Q&A failed: {e}")
 
 
