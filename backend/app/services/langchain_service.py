@@ -54,6 +54,18 @@ class LangChainService:
             except Exception as e:
                 logger.error(f"Failed to initialize Pinecone: {e}")
 
+        # Q&A prompt template
+        self.qa_prompt = ChatPromptTemplate.from_messages([
+            ("system", """Answer questions using only the provided context. Give direct, concise answers without any preface like "Based on the document", "According to the context", or "The document states". Just provide the answer directly.
+
+If you cannot find the answer in the context, simply say "I couldn't find this information in the document."
+
+Context:
+{context}"""),
+            MessagesPlaceholder(variable_name="chat_history", optional=True),
+            ("human", "{question}")
+        ])
+
     @property
     def embeddings(self):
         """Lazy load HuggingFace embeddings model."""
@@ -66,18 +78,6 @@ class LangChainService:
             )
             logger.info("HuggingFace embeddings model loaded")
         return self._embeddings
-
-        # Q&A prompt template
-        self.qa_prompt = ChatPromptTemplate.from_messages([
-            ("system", """Answer questions using only the provided context. Give direct, concise answers without any preface like "Based on the document", "According to the context", or "The document states". Just provide the answer directly.
-
-If you cannot find the answer in the context, simply say "I couldn't find this information in the document."
-
-Context:
-{context}"""),
-            MessagesPlaceholder(variable_name="chat_history", optional=True),
-            ("human", "{question}")
-        ])
 
     def _ensure_index_exists(self):
         """Create Pinecone index if it doesn't exist."""

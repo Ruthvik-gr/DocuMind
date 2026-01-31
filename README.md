@@ -9,8 +9,10 @@ A full-stack web application that allows users to upload PDF documents, audio, a
 - **Audio Transcription**: Upload audio files and get AI-powered transcriptions using local Whisper
 - **Video Transcription**: Upload video files with automatic transcription
 - **AI-Powered Q&A**: Ask questions about uploaded content using LangChain + Groq (Llama 3.3)
+- **Real-time Streaming Responses**: Server-Sent Events (SSE) for live chat responses
 - **Content Summarization**: Generate brief, detailed, or key-point summaries
 - **Timestamp Extraction**: Automatic topic detection and timestamp generation for audio/video
+- **Smart Timestamp Suggestions**: AI suggests relevant timestamps in chat responses for audio/video
 - **Interactive Media Player**: Click timestamps to jump to specific topics in audio/video
 - **User Isolation**: Each user's files and chats are private and secure
 
@@ -23,9 +25,9 @@ A full-stack web application that allows users to upload PDF documents, audio, a
 - **AI/ML**:
   - Groq API with Llama 3.3 70B for Q&A and summarization
   - Local Whisper (faster-whisper) for transcription
-  - LangChain for document Q&A
-  - HuggingFace embeddings (local, free)
-  - FAISS for vector search
+  - LangChain for document Q&A and streaming responses
+  - HuggingFace embeddings (sentence-transformers/all-MiniLM-L6-v2, local)
+  - Pinecone for cloud-based vector search and semantic retrieval
 - **PDF Processing**: PyPDF2
 - **File Storage**: Cloudinary (cloud storage for all files)
 - **Testing**: Pytest with 95%+ coverage target
@@ -40,7 +42,8 @@ A full-stack web application that allows users to upload PDF documents, audio, a
 
 ### Infrastructure
 - **Containerization**: Docker + Docker Compose
-- **CI/CD**: GitHub Actions
+- **CI/CD**: GitHub Actions with automated testing and deployment
+- **Deployment**: Google Cloud Platform (Cloud Run)
 
 ## Project Structure
 
@@ -95,6 +98,15 @@ DocuMind/
 └── docker-compose.yml       # Multi-container orchestration
 ```
 
+## Live Demo
+
+- **Application URL**: https://documind-web-401977038178.us-central1.run.app/
+- **Demo Video**: [Coming Soon - Will be added]
+
+The demo video will cover:
+- Full application features demonstration
+- Code architecture and implementation walkthrough
+
 ## Quick Start
 
 ### Prerequisites
@@ -103,6 +115,7 @@ DocuMind/
 - Google OAuth Client ID (from Google Cloud Console)
 - Cloudinary account (free at https://cloudinary.com)
 - MongoDB Atlas account (free tier available)
+- Pinecone account (free tier at https://www.pinecone.io)
 - Python 3.11+ (for local development)
 - Node.js 18+ (for local development)
 
@@ -142,6 +155,10 @@ GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
 CLOUDINARY_CLOUD_NAME=your-cloud-name
 CLOUDINARY_API_KEY=your-api-key
 CLOUDINARY_API_SECRET=your-api-secret
+
+# Pinecone (Vector Search - Get free API key at https://www.pinecone.io/)
+PINECONE_API_KEY=your-pinecone-api-key-here
+PINECONE_INDEX_NAME=documind
 ```
 
 #### 2. Frontend Environment Variables
@@ -231,7 +248,7 @@ VITE_GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
 - `GET /api/v1/files/{file_id}/stream` - Stream file for media playback
 
 ### Chat (Protected)
-- `POST /api/v1/chat/{file_id}/ask` - Ask a question about a file
+- `POST /api/v1/chat/{file_id}/ask` - Ask a question about a file (streaming SSE response)
 - `GET /api/v1/chat/{file_id}/history` - Get chat history
 
 ### Summaries (Protected)
@@ -263,7 +280,7 @@ VITE_GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
 6. JWT tokens returned
 
 ### Protected Routes
-- All file, chat, summary, and timestamp endpoints require authentication
+- All file, chat, summary, and timestamp endpoints require authentication and only accessible for authorized users
 - Frontend includes JWT token in Authorization header
 - 401 responses redirect to login page
 
@@ -311,33 +328,3 @@ pytest --cov=app --cov-report=html
 cd frontend
 npx tsc --noEmit
 ```
-
-## Troubleshooting
-
-### Common Issues
-
-1. **"The given origin is not allowed" (Google OAuth)**
-   - Add your origin to Google Cloud Console Authorized JavaScript origins
-   - Wait 5 minutes for changes to propagate
-   - Try incognito browser window
-
-2. **ERR_EMPTY_RESPONSE from backend**
-   - Run uvicorn with `--host 0.0.0.0`
-   - Check backend terminal for error traceback
-
-3. **bcrypt/passlib errors**
-   - We use bcrypt directly (not passlib)
-   - Run `pip install bcrypt>=4.0.0`
-
-4. **MongoDB Connection Failed**
-   - Ensure MongoDB Atlas whitelist includes your IP
-   - Check connection string format
-
-5. **Frontend Can't Connect to Backend**
-   - Use `http://127.0.0.1:8000` instead of `localhost`
-   - Check CORS settings in backend
-   - Verify VITE_API_URL in frontend .env
-
-## License
-
-MIT License
