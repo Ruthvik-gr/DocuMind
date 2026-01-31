@@ -32,18 +32,17 @@ class LangChainService:
             length_function=len,
             separators=["\n\n", "\n", ".", " ", ""]
         )
-        # Use HuggingFace embeddings (runs locally, no API needed)
-        self.embeddings = HuggingFaceEmbeddings(
-            model_name="sentence-transformers/all-MiniLM-L6-v2"
-        )
-        # Use Groq for LLM
+        # Lazy load embeddings to avoid startup delay
+        self._embeddings = None
+
+        # Use Groq for LLM (lightweight, no model download)
         self.llm = ChatGroq(
             model_name=settings.GROQ_MODEL,
             temperature=settings.GROQ_TEMPERATURE,
             groq_api_key=settings.GROQ_API_KEY
         )
 
-        # Initialize Pinecone
+        # Initialize Pinecone (lightweight, just API connection)
         self.pinecone_client = None
         self.pinecone_index = None
         if settings.PINECONE_API_KEY:
@@ -54,6 +53,19 @@ class LangChainService:
                 logger.info(f"Connected to Pinecone index: {settings.PINECONE_INDEX_NAME}")
             except Exception as e:
                 logger.error(f"Failed to initialize Pinecone: {e}")
+
+    @property
+    def embeddings(self):
+        """Lazy load HuggingFace embeddings model."""
+        if self._embeddings is None:
+            logger.info("Loading HuggingFace embeddings model (sentence-transformers/all-MiniLM-L6-v2)...")
+            self._embeddings = HuggingFaceEmbeddings(
+                model_name="sentence-transformers/all-MiniLM-L6-v2",
+                model_kwargs={'device': 'cpu'},
+                encode_kwargs={'normalize_embeddings': True}
+            )
+            logger.info("HuggingFace embeddings model loaded")
+        return self._embeddings
 
         # Q&A prompt template
         self.qa_prompt = ChatPromptTemplate.from_messages([

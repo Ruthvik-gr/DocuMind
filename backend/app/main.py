@@ -29,8 +29,19 @@ async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown events."""
     # Startup
     logger.info("Starting application...")
-    await connect_to_mongo()
+    logger.info("Initiating MongoDB connection...")
+
+    try:
+        # Attempt to connect to MongoDB without blocking startup
+        await connect_to_mongo()
+    except Exception as e:
+        # Log error but don't prevent startup
+        logger.error(f"Failed to connect to MongoDB during startup: {e}")
+        logger.warning("Application will start without database connection")
+
+    logger.info("Application startup complete")
     yield
+
     # Shutdown
     logger.info("Shutting down application...")
     await close_mongo_connection()
@@ -137,12 +148,35 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
-    return {
+    """Health check endpoint for Cloud Run probes."""
+    from app.core.database import db
+
+    health_status = {
         "status": "healthy",
         "app_name": settings.APP_NAME,
-        "environment": settings.ENVIRONMENT
+        "environment": settings.ENVIRONMENT,
+        "database": "disconnected"
     }
+
+    # Check database connection
+    if db.client is not None:
+        try:
+            # Quick ping without blocking
+            await db.client.admin.command('ping', check=False)
+            health_status["database"] = "connected"
+        except Exception as e:
+            logger.warning(f"Database health check failed: {e}")
+            health_status["database"] = "error"
+
+    return health_status
+
+
+@app.get("/startup")
+async def startup_probe():
+    """Startup probe endpoint for Cloud Run."""
+    # This endpoint just confirms the app is running
+    # Cloud Run uses this to verify the container started
+    return {"status": "ready"}
 
 
 if __name__ == "__main__":
