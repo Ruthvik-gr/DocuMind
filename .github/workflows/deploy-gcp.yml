@@ -215,12 +215,10 @@ jobs:
       - name: Build Frontend Docker image
         working-directory: ./frontend
         run: |
-          # Use the backend URL from the previous job
-          BACKEND_URL="${{ needs.deploy-backend.outputs.backend_url }}"
-          echo "Building frontend with VITE_API_URL=${BACKEND_URL}/api/v1"
+          # Backend URL is hardcoded in constants.ts
+          echo "Building frontend with hardcoded backend URL"
 
           docker build \
-            --build-arg VITE_API_URL=${BACKEND_URL}/api/v1 \
             --build-arg VITE_GOOGLE_CLIENT_ID=${{ secrets.VITE_GOOGLE_CLIENT_ID }} \
             -t ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/documind/${{ env.FRONTEND_SERVICE }}:${{ github.sha }} \
             -t ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/documind/${{ env.FRONTEND_SERVICE }}:latest \
