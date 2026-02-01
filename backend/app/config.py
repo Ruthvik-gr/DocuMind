@@ -25,7 +25,7 @@ class Settings(BaseSettings):
 
     # Storage
     STORAGE_PATH: str = "./storage"
-    MAX_FILE_SIZE_MB: int = 200
+    MAX_FILE_SIZE_MB: int = 50
 
     # Allowed file types
     ALLOWED_PDF_MIMETYPES: List[str] = ["application/pdf"]

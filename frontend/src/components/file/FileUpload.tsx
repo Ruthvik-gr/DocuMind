@@ -110,7 +110,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onUploadSuccess }) => {
               </button>
             </p>
             <p className="mt-1.5 text-sm text-gray-400">
-              PDF, Audio, or Video up to 200MB
+              PDF, Audio, or Video up to 50MB
             </p>
           </div>
 

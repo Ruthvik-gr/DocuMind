@@ -11,7 +11,7 @@ export const ALLOWED_FILE_TYPES = {
   VIDEO: ['video/mp4', 'video/mpeg', 'video/quicktime', 'video/x-msvideo'],
 };
 
-export const MAX_FILE_SIZE_MB = 200;
+export const MAX_FILE_SIZE_MB = 50;
 
 export const FILE_TYPE_LABELS = {
   pdf: 'PDF Document',
