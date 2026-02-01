@@ -2,7 +2,7 @@
  * Application constants
  */
 
-export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+export const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://documind-api-401977038178.us-central1.run.app/api/v1';
 export const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 
 export const ALLOWED_FILE_TYPES = {
