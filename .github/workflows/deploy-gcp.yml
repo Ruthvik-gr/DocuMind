@@ -116,8 +116,6 @@ jobs:
     needs: [test-backend, test-frontend]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    outputs:
-      backend_url: ${{ steps.deploy.outputs.url }}
 
     permissions:
       contents: read
@@ -179,7 +177,6 @@ jobs:
             --set-env-vars "ENVIRONMENT=production" \
             --format 'value(status.url)')
 
-          echo "url=$BACKEND_URL" >> $GITHUB_OUTPUT
           echo "Backend deployed at: $BACKEND_URL"
 
   # ============================================
@@ -211,28 +208,16 @@ jobs:
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.ARTIFACT_REGISTRY }} --quiet
 
-      - name: Verify backend URL is available
-        run: |
-          BACKEND_URL="${{ needs.deploy-backend.outputs.backend_url }}"
-          echo "--- Job output received ---"
-          echo "backend_url = '$BACKEND_URL'"
-          if [ -z "$BACKEND_URL" ]; then
-            echo "ERROR: backend_url output is empty. The deploy-backend job did not pass the URL correctly."
-            echo "Check the 'Deploy Backend to Cloud Run' step logs above for gcloud errors."
-            exit 1
-          fi
-          echo "VITE_API_URL will be set to: $BACKEND_URL/api/v1"
-
       - name: Build Frontend Docker image
         working-directory: ./frontend
         run: |
-          VITE_API_URL="${{ needs.deploy-backend.outputs.backend_url }}/api/v1"
-          echo "--- Docker build args ---"
-          echo "VITE_API_URL=$VITE_API_URL"
-          echo "VITE_GOOGLE_CLIENT_ID=<set>"
+          BACKEND_URL=$(gcloud run services describe ${{ env.BACKEND_SERVICE }} \
+            --region ${{ env.REGION }} \
+            --format 'value(status.url)')
+          echo "VITE_API_URL=$BACKEND_URL/api/v1"
 
           docker build \
-            --build-arg "VITE_API_URL=$VITE_API_URL" \
+            --build-arg "VITE_API_URL=$BACKEND_URL/api/v1" \
             --build-arg "VITE_GOOGLE_CLIENT_ID=${{ secrets.VITE_GOOGLE_CLIENT_ID }}" \
             --progress=plain \
             -t ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/documind/${{ env.FRONTEND_SERVICE }}:${{ github.sha }} \
@@ -262,7 +247,8 @@ jobs:
           echo "========================================"
           echo "Deployment Complete!"
           echo "========================================"
-          echo "Backend API: ${{ needs.deploy-backend.outputs.backend_url }}"
+          BACKEND_URL=$(gcloud run services describe ${{ env.BACKEND_SERVICE }} --region ${{ env.REGION }} --format 'value(status.url)')
+          echo "Backend API: $BACKEND_URL"
           FRONTEND_URL=$(gcloud run services describe ${{ env.FRONTEND_SERVICE }} --region ${{ env.REGION }} --format 'value(status.url)')
           echo "Frontend Web: $FRONTEND_URL"
           echo "========================================"
