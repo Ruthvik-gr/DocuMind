@@ -9,8 +9,8 @@ on:
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  REGION: us-central1
-  ARTIFACT_REGISTRY: us-central1-docker.pkg.dev
+  REGION: asia-south1
+  ARTIFACT_REGISTRY: asia-south1-docker.pkg.dev
   BACKEND_SERVICE: documind-api
   FRONTEND_SERVICE: documind-web
 
